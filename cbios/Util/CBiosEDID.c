@@ -2693,7 +2693,7 @@ Return:      CBIOS_TRUE if get monitor ID successfully
 ***************************************************************/
 CBIOS_BOOL cbEDIDModule_GetMonitorID(CBIOS_U8 *pEDID, CBIOS_U8 *pMonitorID)
 {
-    CBIOS_U8 index[32] = "0ABCDEFGHIJKLMNOPQRSTUVWXYZ[/]^_";
+    CBIOS_U8 *index = "0ABCDEFGHIJKLMNOPQRSTUVWXYZ[/]^_";
     CBIOS_U8 ProductID[3] = {0};
     CBIOS_BOOL bRet = CBIOS_FALSE;
     CBIOS_U8 *pMonitorIDinEDID = pEDID + MONITORIDINDEX;

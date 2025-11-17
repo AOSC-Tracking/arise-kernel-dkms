@@ -32,7 +32,7 @@
 #define SYNCOBJECTLIST_SIZE     256
 #define ALLOCATIONLIST_SIZE     (USER_MODE_DMA_SIZE / 64) * 4   /* Set to 2KB for every 64KB of command buffer to pass MaxContexts test */
 #define PATCHLOCATIONLIST_SIZE  (USER_MODE_DMA_SIZE / 64) * 16   /* Set to 2KB for every 64KB of command buffer to pass MaxContexts test */
-#define MAX_SYNC_OBJECT_SIZE_PER_DEVICE  512*4
+#define MAX_SYNC_OBJECT_SIZE_PER_DEVICE  64 * 1024
 
 #ifdef GFX_ONLY_FPGA
 #define CM_DESTROY_TIMEOUT       20000

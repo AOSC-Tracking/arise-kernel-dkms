@@ -90,6 +90,8 @@ void glb_init_chip_id(adapter_t *adapter, krnl_adapter_init_info_t *info)
             adapter->chip_id = CHIP_ARISE1010;
         else if((adapter->bus_config.device_id & CHIP_MASK) == CHIP_MASK_ARISE10C0T)
             adapter->chip_id = CHIP_ARISE10C0T;
+        else if((adapter->bus_config.device_id & CHIP_MASK) == CHIP_MASK_ARISE10D0)
+            adapter->chip_id = CHIP_ARISE10C0T;
         else if((adapter->bus_config.device_id & CHIP_MASK) == CHIP_MASK_ARISE2030)
             adapter->chip_id = CHIP_ARISE2030;
         else if((adapter->bus_config.device_id & CHIP_MASK) == CHIP_MASK_ARISE2020)

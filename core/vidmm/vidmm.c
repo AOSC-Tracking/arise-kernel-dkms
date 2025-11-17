@@ -744,9 +744,9 @@ int vidmm_save(adapter_t *adapter)
 
     if (!adapter->fence_buf->reserved_memory->pages_mem)
     {
-        adapter->fence_buf->backup = gf_malloc(68 * 1024);
+        adapter->fence_buf->backup = gf_malloc(512 * 1024);
         if (adapter->fence_buf->backup)
-            gf_memcpy(adapter->fence_buf->backup, adapter->fence_buf->reserved_memory->vma->virt_addr, 68 * 1024);
+            gf_memcpy(adapter->fence_buf->backup, adapter->fence_buf->reserved_memory->vma->virt_addr, 512 * 1024);
     }
 
     return result;
@@ -806,7 +806,7 @@ void vidmm_restore(adapter_t *adapter)
 
     if (adapter->fence_buf->backup)
     {
-        gf_memcpy(adapter->fence_buf->reserved_memory->vma->virt_addr, adapter->fence_buf->backup, 68 * 1024);
+        gf_memcpy(adapter->fence_buf->reserved_memory->vma->virt_addr, adapter->fence_buf->backup, 512 * 1024);
         gf_free(adapter->fence_buf->backup);
     }
 

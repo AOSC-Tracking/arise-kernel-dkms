@@ -61,6 +61,14 @@
 #endif
 #endif
 
+#if DRM_VERSION_CODE >= KERNEL_VERSION(5, 14, 0)
+#if DRM_VERSION_CODE < KERNEL_VERSION(6, 13, 0)
+#include <drm/drm_aperture.h>
+#else
+#include <linux/aperture.h>
+#endif
+#endif
+
 #if defined(__loongarch__)  && defined(KYLIN) && DRM_VERSION_CODE == KERNEL_VERSION(6, 6, 0)
 #include <linux/sysfb.h>
 #endif
@@ -102,6 +110,7 @@ static struct pci_device_id pciidlist[] =
     {0x6766, 0x3D06, PCI_ANY_ID, PCI_ANY_ID, 0, 0, (kernel_ulong_t)&gf_e3k_info}, //arise10c0t
     {0x6766, 0x3D07, PCI_ANY_ID, PCI_ANY_ID, 0, 0, (kernel_ulong_t)&gf_e3k_info},
     {0x6766, 0x3D08, PCI_ANY_ID, PCI_ANY_ID, 0, 0, (kernel_ulong_t)&gf_e3k_info},
+    {0x6766, 0x3D0E, PCI_ANY_ID, PCI_ANY_ID, 0, 0, (kernel_ulong_t)&gf_e3k_info}, //arise10D0
     {0, 0, 0}
 };
 

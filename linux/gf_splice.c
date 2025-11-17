@@ -1158,9 +1158,7 @@ static int gf_splice_crtc_page_flip(struct drm_crtc *crtc,
 
 static struct drm_crtc_state* gf_splice_crtc_duplicate_state(struct drm_crtc *crtc)
 {
-    gf_crtc_state_t* crtc_state, *cur_crtc_state;
-
-    cur_crtc_state = to_gf_crtc_state(crtc->state);
+    gf_crtc_state_t* crtc_state;
 
     crtc_state = gf_calloc(sizeof(gf_crtc_state_t));
     if (!crtc_state)
@@ -1658,7 +1656,18 @@ static void gf_splice_crtc_dpms_onoff_helper(struct drm_crtc *crtc, int dpms_on)
             continue;
         }
 
-        disp_cbios_turn_onoff_screen(disp_info, gf_source_crtc->pipe, status);
+        if(!status)
+        {
+            //turn off
+            disp_cbios_turn_onoff_screen(disp_info, gf_source_crtc->pipe, 0);
+            disp_cbios_turn_onoff_iga(disp_info, gf_source_crtc->pipe, 0);
+        }
+        else if(status)
+        {
+            //turn on
+            disp_cbios_turn_onoff_iga(disp_info, gf_source_crtc->pipe, 1);
+            disp_cbios_turn_onoff_screen(disp_info, gf_source_crtc->pipe, 1);
+        }
     }
 
     gf_crtc->crtc_dpms = status;

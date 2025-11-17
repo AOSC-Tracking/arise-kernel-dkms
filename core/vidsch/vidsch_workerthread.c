@@ -69,7 +69,7 @@ static int vidschi_try_submit_pending_task(vidsch_mgr_t *sch_mgr, pending_task_p
     unsigned long long global_task_id = 0ll;
     int submited_count = 0;
 
-    int submitted = FALSE, signaled = FALSE;
+    int submitted = FALSE;
 
     vidschi_init_task_pool(&schedule_pool, TRUE);
     vidschi_init_task_pool(&unready_pool, FALSE);
@@ -147,7 +147,6 @@ static int vidschi_try_submit_pending_task(vidsch_mgr_t *sch_mgr, pending_task_p
 
             if(vidschi_try_signal(task->task_signal) == S_OK)
             {
-                signaled  = TRUE;
                 submitted = TRUE;
 
                 context->last_submit_to_sw = task_id;
@@ -207,13 +206,6 @@ static int vidschi_try_submit_pending_task(vidsch_mgr_t *sch_mgr, pending_task_p
         submited_count -= unready_pool.task_num;
         vidschi_splice_task_pool(pool, &unready_pool);
     }
-
-#if 0
-    if(signaled)
-    {
-        /* try wakeup all thread for none fence syncobj*/
-    }
-#endif
 
     vidschi_fini_task_pool(&schedule_pool);
     vidschi_fini_task_pool(&unready_pool);
