@@ -1347,7 +1347,9 @@ void gf_disp_state_timer_fn(struct timer_list *t)
 void gf_disp_state_timer_fn(unsigned long data)
 #endif
 {
-#if DRM_VERSION_CODE >= KERNEL_VERSION(4, 15, 0)
+#if DRM_VERSION_CODE >= KERNEL_VERSION(6, 16, 0)
+    disp_state_info_t *pstate_info = timer_container_of(pstate_info, t, state_timer);
+#elif DRM_VERSION_CODE >= KERNEL_VERSION(4, 15, 0)
     disp_state_info_t *pstate_info = from_timer(pstate_info, t, state_timer);
 #else
     disp_state_info_t *pstate_info  = (disp_state_info_t  *)data;
