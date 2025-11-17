@@ -1471,7 +1471,7 @@ void disp_deinit_state_info(disp_info_t* disp_info)
     disp_info->state_info = NULL;
 }
 
-int  gf_init_modeset(struct drm_device *dev)
+int  gf_init_modeset(struct drm_device *dev, int force_enable_snoop)
 {
     gf_card_t*  gf_card = dev->dev_private;
     adapter_info_t* adapter_info = &gf_card->adapter_info;
@@ -1506,7 +1506,7 @@ int  gf_init_modeset(struct drm_device *dev)
 
     disp_cbios_get_slice_num(disp_info);
 
-    gf_core_interface->update_adapter_info(gf_card->adapter, adapter_info, a_info);
+    gf_core_interface->update_adapter_info(gf_card->adapter, adapter_info, a_info, force_enable_snoop);
 
     disp_cbios_get_crtc_resource(disp_info);
 

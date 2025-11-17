@@ -38,7 +38,7 @@ void glb_init_chip_id(adapter_t *adapter, krnl_adapter_init_info_t *info)
 
         adapter->hw_caps.support_snooping = TRUE;
         //from loongson, loonson 3A3000 not support snoop
-#if defined(__mips64__) || defined(__loongarch__)
+#if defined(__mips64__)
         adapter->hw_caps.support_snooping = FALSE;
 #endif
         adapter->hw_caps.page_4k_enable   = TRUE;

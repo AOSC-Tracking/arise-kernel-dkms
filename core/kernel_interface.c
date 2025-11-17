@@ -207,12 +207,16 @@ static  void krnl_get_adapter_info(void*  adp, adapter_info_t*  adapter_info)
     }
 }
 
-static  void  krnl_update_adapter_info(void* adp, adapter_info_t*  adapter_info, krnl_adapter_init_info_t* a_info)
+static  void  krnl_update_adapter_info(void* adp, adapter_info_t*  adapter_info, krnl_adapter_init_info_t* a_info, int force_enable_snoop)
 {
     adapter_t *adapter = (adapter_t *)adp;
     if(adapter && adapter_info)
     {
         adapter->hw_caps.snoop_only = (adapter_info->snoop_only)? 1 : 0;
+        if (force_enable_snoop)
+        {
+            adapter->hw_caps.snoop_only = 1;
+        }
         adapter->low_top_address = adapter_info->low_top_addr;
         adapter->hw_caps.miu_channel_num = adapter_info->chan_num;
         adapter->hw_caps.chip_slice_mask = adapter_info->chip_slice_mask;

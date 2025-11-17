@@ -139,7 +139,7 @@ int gf_register_driver(void)
 
     gf_fb_mode = "640x480-32@60";
 
-    result = gf_card_init(gf, NULL);
+    result = gf_card_init(gf, NULL, FALSE);
     gf_dev = gf;
     return result;
 }

@@ -116,7 +116,7 @@ typedef struct
     void  (*init_adapter)(void *adp, int reserved_vmem, void *disp_info);
     void (*deinit_adapter)(void *data);
     void  (*get_adapter_info)(void* adp, adapter_info_t*  adapter_info);
-    void (*update_adapter_info)(void* adp, adapter_info_t*  adapter_info, krnl_adapter_init_info_t* a_info);
+    void (*update_adapter_info)(void* adp, adapter_info_t*  adapter_info, krnl_adapter_init_info_t* a_info, int force_enable_snoop);
     void (*dump_resource)(struct os_printer *p, void *data, int index, int iga_index);
     void (*debugfs_dump)(struct os_seq_file *seq_file, void *data, int type, void* arg);
     void (*final_cleanup)(void *data, unsigned int gpu_device);

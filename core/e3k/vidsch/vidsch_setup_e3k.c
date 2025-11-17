@@ -207,7 +207,7 @@ static void vidschi_init_lookup_table_e3k(adapter_t  *adapter, vidsch_query_priv
     {
         query->pcie_segment_id         = SEGMENT_ID_LOCAL_E3K;
         query->local_segment_id        = SEGMENT_ID_LOCAL_E3K;
-#if defined(__mips64__) || defined(__loongarch__)
+#if defined(__mips64__)
         //PCIE cfg 0x68[14:12] defualt value is 010b, which means 512 Bytes maximum Read Request size
         //mips system BIOS(loonson PMON) modify this value to 000b, which means 128 Bytes maximum Read Request size
         //if fence buffer is in LOCAL, BIU will receive 8*256 bits Dummy Fence Read Request, which exceed 128 Bytes,
@@ -229,7 +229,7 @@ static void vidschi_init_lookup_table_e3k(adapter_t  *adapter, vidsch_query_priv
         }
         else
         {
-#if defined(__mips64__) || defined(__loongarch__)
+#if defined(__mips64__)
             //In mips or loongarch system, arise(1020,10C0), because of the HW issue, the FE/BE fence value may be not updated when fence buffer
             // is in pcie memory.
             query->fence_buffer_segment_id = SEGMENT_ID_LOCAL_E3K;

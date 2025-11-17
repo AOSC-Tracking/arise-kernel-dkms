@@ -113,11 +113,11 @@ extern struct class *gf_class;
 extern struct drm_ioctl_desc gf_ioctls[];
 extern struct drm_ioctl_desc gf_ioctls_compat[];
 
-extern int  gf_card_init(gf_card_t *gf, void *pdev);
+extern int  gf_card_init(gf_card_t *gf, void *pdev, int force_enable_snoop);
 extern int  gf_card_deinit(gf_card_t *gf);
-extern int  gf_init_modeset(struct drm_device *dev);
+extern int  gf_init_modeset(struct drm_device *dev, int force_enable_snoop);
 extern void  gf_deinit_modeset(struct drm_device *dev);
-extern int gf_vkms_init_modeset(struct drm_device *ddev);
+extern int gf_vkms_init_modeset(struct drm_device *ddev, int force_enable_snoop);
 extern void gf_vkms_deinit_modeset(struct drm_device *ddev);
 
 extern int gf_debugfs_crtc_dump(struct seq_file* file, struct drm_device* dev, int index);

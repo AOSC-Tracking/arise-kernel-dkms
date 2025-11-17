@@ -516,13 +516,13 @@ static void gf_vkms_get_adapter_info(disp_info_t *disp_info)
     gf_core_interface->get_adapter_info(gf_card->adapter, disp_info->adp_info);
 }
 
-static void gf_vkms_update_adapter_info(disp_info_t *disp_info)
+static void gf_vkms_update_adapter_info(disp_info_t *disp_info, int force_enable_snoop)
 {
     gf_card_t *gf_card = (gf_card_t *)disp_info->gf_card;
     adapter_info_t* adapter_info = disp_info->adp_info;
     krnl_adapter_init_info_t* a_info = &gf_card->a_info;
 
-    gf_core_interface->update_adapter_info(gf_card->adapter, adapter_info, a_info);
+    gf_core_interface->update_adapter_info(gf_card->adapter, adapter_info, a_info, force_enable_snoop);
 
 }
 
@@ -555,7 +555,7 @@ static void gf_vkms_deinit_cbios(disp_info_t *disp_info)
     disp_info_deinit(disp_info);
 }
 
-int gf_vkms_init_modeset(struct drm_device *ddev)
+int gf_vkms_init_modeset(struct drm_device *ddev, int force_enable_snoop)
 {
     int ret, i;
     gf_card_t *gf_card = ddev->dev_private;
@@ -587,7 +587,7 @@ int gf_vkms_init_modeset(struct drm_device *ddev)
 
     gf_vkms_init_cbios(disp_info);
 
-    gf_vkms_update_adapter_info(disp_info);
+    gf_vkms_update_adapter_info(disp_info, force_enable_snoop);
 
     gf_vkms_mode_config_init(ddev);
 
@@ -675,7 +675,7 @@ void gf_vkms_deinit_modeset(struct drm_device *ddev)
 
 #else
 
-int gf_vkms_init_modeset(struct drm_device *ddev)
+int gf_vkms_init_modeset(struct drm_device *ddev, int force_enable_snoop)
 {
     gf_info("gf vkms only support drm version >= 4.19.0\n");
     return 0;

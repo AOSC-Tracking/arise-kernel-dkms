@@ -977,7 +977,7 @@ ATTRIBUTE_GROUPS(gf_hwmon);
 
 #endif
 
-int gf_card_init(gf_card_t *gf, void *pdev)
+int gf_card_init(gf_card_t *gf, void *pdev, int force_enable_snoop)
 {
     int ret = 0;
 
@@ -1003,11 +1003,11 @@ int gf_card_init(gf_card_t *gf, void *pdev)
     gf->cbios_flags = gf_modparams.gf_cbios_flags;
     if (gf_modparams.gf_virtual_display)
     {
-        gf_vkms_init_modeset(gf->drm_dev);
+        gf_vkms_init_modeset(gf->drm_dev, force_enable_snoop);
     }
     else
     {
-        gf_init_modeset(gf->drm_dev);
+        gf_init_modeset(gf->drm_dev, force_enable_snoop);
     }
 
     gf_disable_async_suspend(gf);

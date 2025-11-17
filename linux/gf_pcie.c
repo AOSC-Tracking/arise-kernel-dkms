@@ -371,7 +371,7 @@ void gf_selftest(gf_card_t *gf)
 }
 
 #define PCI_EN_IO_SPACE     1
-static int gf_drm_load_kms(struct drm_device *dev, unsigned long flags)
+static int gf_drm_load_kms(struct drm_device *dev, unsigned long flags, int force_enable_snoop)
 {
     struct pci_dev *pdev = to_pci_dev(dev->dev);
     struct device* device = &pdev->dev;
@@ -445,7 +445,7 @@ static int gf_drm_load_kms(struct drm_device *dev, unsigned long flags)
 
     gf_init_adapter_info_by_params(&gf->a_info, &gf_modparams);
     gf->a_info.minor_index = gf->index;
-    ret = gf_card_init(gf, pdev);
+    ret = gf_card_init(gf, pdev, force_enable_snoop);
     if(ret)
     {
         gf_error("%s_card_init() failed. ret:0x%x\n", STR(DRIVER_NAME), ret);
@@ -840,8 +840,26 @@ static int gf_pcie_probe(struct pci_dev *pdev, const struct pci_device_id *ent)
 #endif
 
     pci_set_drvdata(pdev, dev);
-
-    ret = gf_drm_load_kms(dev, flags);
+    int force_enable_snoop = FALSE;
+#if defined(__loongarch_lp64)
+    struct pci_bus * dev_bus = pdev->bus;
+    if (dev_bus)
+    {
+        struct pci_dev * parent_dev = dev_bus->self;
+        if (parent_dev)
+        {
+            gf_info("pci parent(vendor:0x%X, device:0x%X) \n", parent_dev->vendor, parent_dev->device);
+            // 3C6000/3B6000 pcie bridge device_id is 3c09 3c19 3c29
+            // 2K3000/3B6000M pcie bridge device_id is 7a99
+            if (parent_dev->vendor == PCI_VENDOR_ID_LOONGSON &&
+             ((parent_dev->device >= 0x3c00 && parent_dev->device <= 0x3cff) || (parent_dev->device == 0x7a99)))
+            {
+                force_enable_snoop = TRUE;
+            }
+        }
+    }
+#endif
+    ret = gf_drm_load_kms(dev, flags, force_enable_snoop);
     if (ret)
     {
         goto err_pci;
