@@ -853,6 +853,29 @@ int disp_cbios_get_adapter_modes(disp_info_t *disp_info, void* buffer, int buf_s
     return  real_num;
 }
 
+CBiosModeInfoExt* disp_cbios_get_preferred_mode(CBiosModeInfoExt *dev_mode_list, unsigned int mode_num)
+{
+    CBiosModeInfoExt *pcbios_mode = NULL;
+    int i = 0;
+
+    for (i = 0; i < mode_num; i++)
+    {
+        pcbios_mode = dev_mode_list + i;
+
+        if (pcbios_mode->isPreferredMode)
+        {
+            break;
+        }
+    }
+
+    return pcbios_mode;
+}
+
+CBiosModeInfoExt* disp_cbios_get_maxium_mode(CBiosModeInfoExt *dev_mode_list)
+{
+    return &dev_mode_list[0];
+}
+
 int disp_cbios_merge_modes(CBiosModeInfoExt* merge_mode_list, CBiosModeInfoExt * adapter_mode_list, unsigned int const adapter_mode_num,
     CBiosModeInfoExt const * dev_mode_list, unsigned int const dev_mode_num)
 {

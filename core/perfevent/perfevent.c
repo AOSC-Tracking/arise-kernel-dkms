@@ -401,7 +401,6 @@ int perf_event_get_miu_event(adapter_t *adapter, gf_get_miu_dump_perf_event_t *g
     perf_event_mgr_t *perf_event_mgr    = adapter->perf_event_mgr;
     perf_event_node *event_node         = NULL;
     perf_event_node *event_node_next    = NULL;
-    gf_perf_event_header_t *perf_event = NULL;
     int event_fill_num                  = 0;
     char *dst_buf                       = get_perf_event->event_buffer;
 
@@ -439,8 +438,6 @@ int perf_event_get_miu_event(adapter_t *adapter, gf_get_miu_dump_perf_event_t *g
 
         gf_copy_to_user(dst_buf, &event_node->perf_event, event_node->perf_event.size);
         dst_buf += event_node->perf_event.size;
-
-        perf_event = &event_node->perf_event;
 
         list_del(&event_node->list_node);
 
@@ -482,7 +479,6 @@ int perf_event_get_event(adapter_t *adapter, gf_get_perf_event_t *get_perf_event
     int i = 0;
     int ret = 0;
     char *dst_buf = get_perf_event->event_buffer;
-    gf_perf_event_header_t *perf_event;
 
     perf_event_trace("perf_event_get_event enter\n");
 
@@ -516,8 +512,6 @@ int perf_event_get_event(adapter_t *adapter, gf_get_perf_event_t *get_perf_event
     {
         gf_copy_to_user(dst_buf, &event_node->perf_event, event_node->perf_event.size);
         dst_buf += event_node->perf_event.size;
-
-        perf_event = &event_node->perf_event;
 
         list_del(&event_node->list_node);
 
@@ -930,8 +924,12 @@ int hwq_process_vsync_event(adapter_t *adapter, unsigned long long time)
             }
             p_hwq_event->idle_time+=(e_idle_time - s_idle_time);
         }
-        p_hwq_event->engine_usage = 100 - gf_do_div(p_hwq_event->idle_time*100, time - hwq_event_mgr->start_time);
-        //gf_info("\n EngineNum=%d engine_usage ALL=%llu%%\n",engine,p_hwq_event->engine_usage);
+
+        if (time != hwq_event_mgr->start_time)
+        {
+            p_hwq_event->engine_usage = 100 - gf_do_div(p_hwq_event->idle_time*100, time - hwq_event_mgr->start_time);
+            //gf_info("\n EngineNum=%d engine_usage ALL=%llu%%\n",engine,p_hwq_event->engine_usage);
+        }
 
         p_hwq_event->idle_time=0;
         p_hwq_event->engine_status.active=0;

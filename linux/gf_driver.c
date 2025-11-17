@@ -604,6 +604,15 @@ static ssize_t gf_gpuinfo_proc_read(struct file *filp, char *buf, size_t count, 
         type_dp = "/DP";
         break;
 
+    case 0x3d0e:
+        hdmi_fps = 60;
+        subsystemid = 0x10D0;
+        technology = 28;
+        pixel_fillrate = 96 * eclk;
+        texture_fillrate = pixel_fillrate *2;
+        product_name = "Arise10D0";
+        break;
+
     default:
         hdmi_fps = 60;
         subsystemid = 0;

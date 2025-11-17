@@ -1170,8 +1170,8 @@ static int disp_mode_config_init(disp_info_t* disp_info)
 
     drm->mode_config.max_width = 3840*4;   // 4*4k
     drm->mode_config.max_height = 2160*4;
-    drm->mode_config.cursor_width = 64;
-    drm->mode_config.cursor_height = 64;
+    drm->mode_config.cursor_width = 128;
+    drm->mode_config.cursor_height = 128;
 
     drm->mode_config.preferred_depth = 24;
     drm->mode_config.prefer_shadow = 1;
@@ -1807,12 +1807,12 @@ int gf_get_chip_fanspeed(void* dispi, int index)
 
 int gf_get_chip_fanspeed_legacy(void* dispi, int index)
 {
-    static int fanspeed = 0,pwm = 0;
+    static int fanspeed = 0;
     disp_info_t*  disp_info = (disp_info_t*)dispi;
     adapter_info_t*  adp_info = disp_info->adp_info;
     int ctrl_reg_8x000, ctrl_reg_8x008, ctrl_reg_8x014, out_8x01c;
-    unsigned int *pRegAddr_8x000, *pRegAddr_8x004, *pRegAddr_8x008, *pRegAddr_8x00c, *pRegAddr_8x014, *pRegAddr_8x01c, *pRegAddr_d00xc;
-    int temp = 0, fanbase = 0, pwmoffset = 0;
+    unsigned int *pRegAddr_8x000, *pRegAddr_8x004, *pRegAddr_8x008, *pRegAddr_8x014, *pRegAddr_8x01c;
+    int temp = 0, fanbase = 0;
 
     if(adp_info->mmio_size < 0x8F024)
     {
@@ -1827,12 +1827,10 @@ int gf_get_chip_fanspeed_legacy(void* dispi, int index)
             return fanspeed;
 
         fanbase = 0x8c000;
-        pwmoffset = 0x10;
     }
     else if(index == 0)
     {
         fanbase = 0x8d000;
-        pwmoffset = 0x0;
     }
     else
     {
@@ -1842,10 +1840,8 @@ int gf_get_chip_fanspeed_legacy(void* dispi, int index)
     pRegAddr_8x000   = (unsigned int*)(adp_info->mmio  + fanbase + 0x000);
     pRegAddr_8x004   = (unsigned int*)(adp_info->mmio  + fanbase + 0x004);
     pRegAddr_8x008   = (unsigned int*)(adp_info->mmio  + fanbase + 0x008);
-    pRegAddr_8x00c   = (unsigned int*)(adp_info->mmio  + fanbase + 0x00c);
     pRegAddr_8x014   = (unsigned int*)(adp_info->mmio  + fanbase + 0x014);
     pRegAddr_8x01c   = (unsigned int*)(adp_info->mmio  + fanbase + 0x01c);
-    pRegAddr_d00xc   = (unsigned int*)(adp_info->mmio  + pwmoffset + 0xd0000 + 0x0c);
 
     if((gf_read32(pRegAddr_8x004) & 0x2) != 0)
     {
@@ -1868,8 +1864,6 @@ int gf_get_chip_fanspeed_legacy(void* dispi, int index)
 
         fanspeed = -1;
     }
-
-    pwm = gf_read32(pRegAddr_d00xc) & 0xfff;
 
     ctrl_reg_8x014 = 0x7D00;
     gf_write32(pRegAddr_8x014, ctrl_reg_8x014);

@@ -1211,8 +1211,10 @@ static void gf_flush_page_cache(struct device *dev, struct page *pages, unsigned
 #if __ARM_ARCH >= 8
         flush_icache_range((unsigned long)ptr, (unsigned long)(ptr+PAGE_SIZE));
 #else
+#if !defined(__riscv)
         dmac_flush_range(ptr, ptr + PAGE_SIZE);
         outer_flush_range(page_to_phys(pages), page_to_phys(pages) + PAGE_SIZE);
+#endif
 #endif
         kunmap(pages);
         pages++;
@@ -1782,8 +1784,10 @@ void gf_flush_cache(void *pdev, gf_vm_area_t *vma, struct os_pages_memory* memor
 #elif __ARM_ARCH >= 8
         flush_icache_range((unsigned long)(ptr + page_start_offset), (unsigned long)(ptr + page_end_offset));
 #else
+#if !defined(__riscv)
         dmac_flush_range(ptr + page_start_offset, ptr + page_end_offset);
         outer_flush_range(page_to_phys(pages) + page_start_offset, page_to_phys(pages) + page_end_offset);
+#endif
 #endif
         kunmap(pages);
     }
@@ -1796,8 +1800,10 @@ void gf_flush_cache(void *pdev, gf_vm_area_t *vma, struct os_pages_memory* memor
 #elif __ARM_ARCH >= 8
         flush_icache_range((unsigned long)(ptr + page_start_offset), (unsigned long)(ptr + PAGE_SIZE));
 #else
+#if !defined(__riscv)
         dmac_flush_range(ptr + page_start_offset, ptr + PAGE_SIZE);
         outer_flush_range(page_to_phys(pages) + page_start_offset, page_to_phys(pages) + PAGE_SIZE);
+#endif
 #endif
         kunmap(pages);
 
@@ -1808,8 +1814,10 @@ void gf_flush_cache(void *pdev, gf_vm_area_t *vma, struct os_pages_memory* memor
 #elif __ARM_ARCH >= 8
         flush_icache_range((unsigned long)ptr, (unsigned long)(ptr + page_end_offset));
 #else
+#if !defined(__riscv)
         dmac_flush_range(ptr, ptr + PAGE_SIZE);
         outer_flush_range(page_to_phys(pages), page_to_phys(pages) + page_end_offset);
+#endif
 #endif
         kunmap(pages);
     }
@@ -1823,8 +1831,10 @@ void gf_flush_cache(void *pdev, gf_vm_area_t *vma, struct os_pages_memory* memor
 #elif  __ARM_ARCH >= 8
         flush_icache_range((unsigned long)ptr, (unsigned long)(ptr + PAGE_SIZE));
 #else
+#if !defined(__riscv)
         dmac_flush_range(ptr, ptr + PAGE_SIZE);
         outer_flush_range(page_to_phys(pages), page_to_phys(pages) + PAGE_SIZE);
+#endif
 #endif
         kunmap(pages);
     }
@@ -1868,8 +1878,10 @@ void gf_inv_cache(void *pdev, gf_vm_area_t *vma, struct os_pages_memory* memory,
 #elif __ARM_ARCH >= 8
         flush_icache_range((unsigned long)(ptr + page_start_offset), (unsigned long)(ptr + page_end_offset));
 #else
+#if !defined(__riscv)
         dmac_flush_range(ptr + page_start_offset, ptr + page_end_offset);
         outer_inv_range(page_to_phys(pages) + page_start_offset, page_to_phys(pages) + page_end_offset);
+#endif
 #endif
         kunmap(pages);
     }
@@ -1882,8 +1894,10 @@ void gf_inv_cache(void *pdev, gf_vm_area_t *vma, struct os_pages_memory* memory,
 #elif __ARM_ARCH >= 8
         flush_icache_range((unsigned long)(ptr + page_start_offset), (unsigned long)(ptr + PAGE_SIZE));
 #else
+#if !defined(__riscv)
         dmac_flush_range(ptr + page_start_offset, ptr + PAGE_SIZE);
         outer_inv_range(page_to_phys(pages) + page_start_offset, page_to_phys(pages) + PAGE_SIZE);
+#endif
 #endif
         kunmap(pages);
 
@@ -1894,8 +1908,10 @@ void gf_inv_cache(void *pdev, gf_vm_area_t *vma, struct os_pages_memory* memory,
 #elif __ARM_ARCH >= 8
         flush_icache_range((unsigned long)ptr, (unsigned long)(ptr + PAGE_SIZE));
 #else
+#if !defined(__riscv)
         dmac_flush_range(ptr, ptr + PAGE_SIZE);
         outer_inv_range(page_to_phys(pages), page_to_phys(pages) + page_end_offset);
+#endif
 #endif
         kunmap(pages);
     }
@@ -1909,8 +1925,10 @@ void gf_inv_cache(void *pdev, gf_vm_area_t *vma, struct os_pages_memory* memory,
 #elif __ARM_ARCH >= 8
         flush_icache_range((unsigned long)ptr, (unsigned long)(ptr + PAGE_SIZE));
 #else
+#if !defined(__riscv)
         dmac_flush_range(ptr, ptr + PAGE_SIZE);
         outer_inv_range(page_to_phys(pages), page_to_phys(pages) + PAGE_SIZE);
+#endif
 #endif
         kunmap(pages);
     }
@@ -2348,7 +2366,7 @@ int gf_disp_wait_idle(void *disp_info)
 #define gf_wmb_asm()   wmb()
 #define gf_flush_wc_asm() mb()
 #define gf_dsb_asm()
-#else
+#elif defined(__aarch64__)
 #if __ARM_ARCH >= 7
 #define dmb(opt)        asm volatile("dmb " #opt : : : "memory")
 #define dsb(opt)        asm volatile("dsb " #opt : : : "memory")
@@ -2359,6 +2377,12 @@ int gf_disp_wait_idle(void *disp_info)
 #define gf_flush_wc_asm() dsb(sy)
 #define gf_dsb_asm()   dsb(sy)
 #endif
+#elif defined(__riscv)
+#define gf_mb_asm()
+#define gf_rmb_asm()
+#define gf_wmb_asm()
+#define gf_flush_wc_asm()
+#define gf_dsb_asm()
 #endif
 
 void gf_mb(void)

@@ -84,7 +84,7 @@ int vidsch_create(adapter_t *adapter)
 
     adapter->active_engine_count = query_data.engine_count;
 
-    adapter->fence_buf = vidschi_create_fence_buffer(adapter, query_data.fence_buffer_segment_id, 68*1024);
+    adapter->fence_buf = vidschi_create_fence_buffer(adapter, query_data.fence_buffer_segment_id, 512 * 1024);
     adapter->fence_buf_local = vidschi_create_fence_buffer(adapter, 0x1, 68*1024);
     adapter->fence_buf_snoop = vidschi_create_fence_buffer(adapter, 0x3, 68*1024);
 
@@ -720,7 +720,7 @@ static vidsch_fence_buffer_t *vidschi_create_fence_buffer(adapter_t *adapter, un
     vidsch_fence_buffer_t   *fence_buf       = gf_calloc(sizeof(vidsch_fence_buffer_t));
     vidmm_segment_memory_t  *reserved_memory = NULL;
     vidmm_map_flags_t        map_flags       = {0};
-    unsigned short           total_num       = 0;
+    unsigned int           total_num       = 0;
 
     reserved_memory = vidmm_allocate_segment_memory(adapter, segment_id, buffer_size, 0);
 

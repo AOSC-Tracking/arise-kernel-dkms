@@ -36,7 +36,7 @@ static int vidschi_submit_dma(vidsch_mgr_t *sch_mgr, task_dma_t *task_dma)
     gpu_context_t           *context       = task_dma->desc.context;
     vidmm_allocation_t      *mm_allocation = NULL;
     vidsch_allocation_t     *sch_allocation = NULL;
-    unsigned long long      fence_id, last_send_fence_id;
+    unsigned long long      fence_id;
     int                      i, ret = S_OK;
 
     gf_down_read(schedule->rw_lock);
@@ -50,7 +50,6 @@ static int vidschi_submit_dma(vidsch_mgr_t *sch_mgr, task_dma_t *task_dma)
 
     //gf_mutex_lock(adapter->hw_reset_lock);
 
-    last_send_fence_id = sch_mgr->last_send_fence_id;
     fence_id = vidschi_inc_send_fence_id(sch_mgr, task_dma->prepare_submit);
 
     task_dma->prepare_submit = FALSE;
