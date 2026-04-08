@@ -115,7 +115,9 @@ typedef  enum  _CBIOS_CLOCK_TYPE
 #define CBIOS_YCBCR420OUTPUT     8
 #define CBIOS_NONDIGITALOUTPUT   9
 
-
+/* CbiosFlags */
+#define GF_RUN_HDCP_CTS                             0x00010000
+#define GF_RUN_DP_CTS                               0x00020000
 
 #ifndef CBIOS_FALSE
 #define CBIOS_FALSE   0
@@ -170,6 +172,17 @@ typedef enum _CBIOS_MONITOR_TYPE   {
     CBIOS_MONITOR_TYPE_DP       = 0x40,
     CBIOS_MONITOR_TYPE_MHL      = 0x80
 } CBIOS_MONITOR_TYPE, *PCBIOS_MONITOR_TYPE;
+
+typedef enum _CBIOS_CONNECTOR_TYPE
+{
+    CBIOS_NON_CONN             = 0x00,
+    CBIOS_VGA_CONN             = 0x01,
+    CBIOS_DVI_CONN             = 0x02,
+    CBIOS_HDMI_CONN            = 0x03,
+    CBIOS_DP_CONN              = 0x04,
+    CBIOS_EDP_CONN             = 0x05,
+    CBIOS_INVALID_CONN         = 0x06,
+}CBIOS_CONNECTOR_TYPE;
 
 typedef enum _CBIOS_PM_STATUS
 {
@@ -286,6 +299,7 @@ typedef struct _CBIOS_PARAM_INIT
     CBIOS_U32       ChipRevision;
     CBIOS_U32       bRunOnQT;
     CBIOS_U32       bDriverLoadQTiming;
+    CBIOS_U32       CbiosFlags;
 } CBIOS_PARAM_INIT, *PCBIOS_PARAM_INIT;
 
 typedef struct _CBIOS_PARAM_SHADOWINFO{
@@ -544,7 +558,9 @@ typedef struct _CBios_Mode_Info_Ext
             CBIOS_U32   isPreferredMode     :1; /* Bit 18: Preferred mode flag*/
                                                 /*    bit18 = 1: preferred mode*/
                                                 /*    bit18 = 0: not preferred mode*/
-            CBIOS_U32   RsvdModeFlags       :13;/* Other bits reserved for future use */
+            CBIOS_U32   isSupportYCbCr420   :1;/* Bit19 = 1, Means support YCbCr420 format */
+            CBIOS_U32   isOnlyY420Support   :1;/* Bit20 = 1, Means not support other format except YCbCr420 */
+            CBIOS_U32   RsvdModeFlags       :11;/* Other bits reserved for future use */
 
         };
     };
@@ -716,6 +732,14 @@ typedef struct _CBiosMonitorAttribute
     CBIOS_OUT   CBIOS_U32               MinBLLevel;
     };
 }CBiosMonitorAttribute, *PCBiosMonitorAttribute;
+
+typedef struct _CBiosPortAttribute
+{
+    CBIOS_IN   CBIOS_U32                Size;
+    CBIOS_IN   CBIOS_U32                DeviceId;              /* CBIOS_ACTIVE_TYPE */
+    CBIOS_OUT  CBIOS_CONNECTOR_TYPE     PortConnType;          /* The connector type of port on board */ 
+    CBIOS_OUT  CBIOS_MONITOR_TYPE       SupportMonitorType;    /* The supported monitor types of port */ 
+}CBiosPortAttribute, *PCBiosPortAttribute;
 
 typedef struct _CBiosContentProtectionOnOffParams
 {
@@ -1590,7 +1614,8 @@ typedef  struct  _PCBIOS_VBINFO_PARAM
         CBIOS_U32              SnoopOnly      :1;
         CBIOS_U32              HdaudioToLocal :1;
         CBIOS_U32              NonSimulChip   :1;
-        CBIOS_U32              Reserved1      :29;
+        CBIOS_U32              SzwCustomer    :1;
+        CBIOS_U32              Reserved1      :28;
     };
 
     CBIOS_U32              MemChNum;       // Miu channel number
@@ -2712,6 +2737,11 @@ CBiosGetDisplayAddr(CBIOS_IN  PCBIOS_VOID  pvcbe,
 DLLEXPORTS CBIOS_STATUS
 CBiosQueryMonitorAttribute(CBIOS_IN CBIOS_VOID* pvcbe,
                                     CBIOS_OUT PCBiosMonitorAttribute pMonitorAttribute);
+
+DLLEXPORTS CBIOS_STATUS
+CBiosQueryPortAttribute(CBIOS_IN PCBIOS_VOID pvcbe, 
+                        CBIOS_IN CBIOS_OUT PCBiosPortAttribute pPortAttribute);
+
 #ifndef UEFI_DIAGTOOL
 DLLEXPORTS CBIOS_STATUS
 CBiosContentProtectionOnOff(CBIOS_IN CBIOS_VOID* pvcbe,
@@ -2847,6 +2877,12 @@ CBiosVIPCtl(PCBIOS_VOID pvcbe, PCBIOS_VIP_CTRL_DATA pCbiosVIPCtlData);
 
 DLLEXPORTS CBIOS_STATUS
 CBiosGetSliceNum(CBIOS_IN PCBIOS_VOID pvcbe, CBIOS_OUT PCBIOS_U8 pSliceNum, CBIOS_OUT PCBIOS_U32 pGPCReg);
+
+DLLEXPORTS CBIOS_STATUS
+CBiosFlashWriteData(PCBIOS_VOID pvcbe, CBIOS_U32 Addr, PCBIOS_UCHAR Buffer, CBIOS_U32 Size);
+
+DLLEXPORTS CBIOS_STATUS
+CBiosFlashReadData(PCBIOS_VOID pvcbe, CBIOS_U32 Addr, PCBIOS_UCHAR Buffer, CBIOS_U32 Size);
 
 /*When need add new interface, please add this from this position.*/
 #ifdef __cplusplus

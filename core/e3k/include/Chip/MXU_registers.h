@@ -69,6 +69,7 @@
 #define        Reg_Diu_Reserve_Ctrl_Offset                                0x1E
 #define        Reg_Bium_Hdr_Num_Offset                                    0x1F
 #define        Reg_Mxu_Reserved_Offset                                    0x20
+#define        Reg_Miu_Port_Decode_Offset                                 0x25
 #define        Reg_Mxu_Resvered_For_Sila_Offset                           0x7FF
 
 
@@ -499,6 +500,15 @@ typedef union
         unsigned int Reserved                  : 32;
     } reg;
 } Reg_Mxu_Reserved;
+
+typedef union
+{
+    unsigned int uint;
+    struct
+    {
+        unsigned int Pa_Mask : 32;  // port_id = ^(PA[39:8] &PA_Mask[31:0])
+    } reg;
+} Reg_Miu_Port_Decode;
 
 typedef union
 {

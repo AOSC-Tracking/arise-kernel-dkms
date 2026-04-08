@@ -539,7 +539,7 @@ static int vidschi_wait_fence_sync_object_signaled(task_wait_t *task, vidsch_wai
     /* if timeout <= 5ms, warning it, since 5ms, maybe always timeout */
     if(msec <= 5)
     {
-        gf_info("Warning: context: %x, TID: %d, client wait timeout: %dms, %lldns reset it to %ds.\n",
+        gf_debug("Warning: context: %x, TID: %d, client wait timeout: %dms, %lldns reset it to %dms.\n",
             context->handle, context->tid, msec, instance->timeout, DEFAULT_CLIENT_WAIT_TIMEOUT);
         msec = DEFAULT_CLIENT_WAIT_TIMEOUT;
     }

@@ -530,7 +530,7 @@ CBIOS_VOID cbSetSRTimingReg_Arise(PCBIOS_EXTENSION_COMMON pcbe,
 {
     CBIOS_U32   ulBlankingTime = 0,ulSyncWidth= 0, ulBackPorchWidth = 0, ulSyncStart2BlankEnd = 0;
     CBIOS_TIMING_REG_Arise   TimingReg;
-    CBIOS_U8 Value = 0x80;
+    CBIOS_U8 Value = 0x40;
 
     cb_memset(&TimingReg, 0, sizeof(CBIOS_TIMING_REG_Arise));
     //================================================================//
@@ -3207,16 +3207,6 @@ CBIOS_BOOL cbGetSysBiosInfo(PCBIOS_EXTENSION_COMMON pcbe)
         status = CBIOS_FALSE;
     }
     return status;
-}
-CBIOS_U8  cbGetCheckSum(CBIOS_U8* pByte, CBIOS_U32 uLength)
-{
-    CBIOS_U8 ByteVal=0;
-    CBIOS_U32 i;
-    for(i=0;i<uLength;i++)
-    {
-        ByteVal+=pByte[i];
-    }
-    return ByteVal;
 }
 
 CBIOS_VOID cbDisableStream_Arise(PCBIOS_EXTENSION_COMMON pcbe, CBIOS_U32 IGAIndex)

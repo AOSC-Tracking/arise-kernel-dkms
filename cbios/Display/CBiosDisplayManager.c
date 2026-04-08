@@ -242,7 +242,7 @@ static CBIOS_VOID cbDetermineModeVICCode(PCBIOS_EXTENSION_COMMON pcbe, PCBIOS_DI
             {
                 if((pTargetModePara->XRes == pcbe->pHDMIFormatTable[i].XRes) &&
                    (pTargetModePara->YRes == pcbe->pHDMIFormatTable[i].YRes) &&
-                   (pTargetModePara->bInterlace== (CBIOS_BOOL)pcbe->pHDMIFormatTable[i].Interlace) &&
+                   (pTargetModePara->bInterlace == (CBIOS_BOOL)pcbe->pHDMIFormatTable[i].Interlace) &&
                     pDevCommon->EdidStruct.HDMIFormat[i].IsSupported)
                 {
                     //check refresh rate
@@ -303,6 +303,7 @@ static CBIOS_STATUS cbUpdateIGAModeInfo(PCBIOS_VOID pvcbe, PCBIOS_DISP_MODE_PARA
     CBIOS_U32 Device = 0;
     PCBIOS_DEVICE_COMMON pDevCommon  = CBIOS_NULL;
     PCBIOS_MONITOR_MISC_ATTRIB pMonitorAttr = CBIOS_NULL;
+    CBIOS_QUERY_MODE_FLAGS QueryModeFlags = {0};
 
     Device = pcbe->DispMgr.ActiveDevices[IGAIndex];
     pDevCommon = cbGetDeviceCommon(&pcbe->DeviceMgr, Device);
@@ -360,8 +361,7 @@ static CBIOS_STATUS cbUpdateIGAModeInfo(PCBIOS_VOID pvcbe, PCBIOS_DISP_MODE_PARA
 
     if(pModeParams->VICCode != 0)//convert output signal to YCbCr420 for 420 only mode
     {
-        if(pDevCommon->EdidStruct.HDMIFormat[pModeParams->VICCode - 1].IsSupportYCbCr420 &&
-            !pDevCommon->EdidStruct.HDMIFormat[pModeParams->VICCode - 1].IsSupportOtherFormats)
+        if(pDevCommon->EdidStruct.HDMIFormat[pModeParams->VICCode - 1].IsOnlyY420Support)
         {
             pModeParams->TargetModePara.OutputSignal = CBIOS_YCBCR420OUTPUT;
 
@@ -376,11 +376,14 @@ static CBIOS_STATUS cbUpdateIGAModeInfo(PCBIOS_VOID pvcbe, PCBIOS_DISP_MODE_PARA
     cb_memcpy(&pModeParams->VideoCapability, &pMonitorAttr->ExtDataBlock[VIDEO_CAPABILITY_DATA_BLOCK_TAG].VideoCapabilityData,
                 sizeof(CBIOS_VIDEO_CAPABILITY_DATA));
 
+    QueryModeFlags.IsInterLaced = pModeParams->TargetModePara.bInterlace ? 1 : 0;
+    QueryModeFlags.IsYCC420Mode = (pModeParams->TargetModePara.OutputSignal == CBIOS_YCBCR420OUTPUT) ? 1 : 0;
+    QueryModeFlags.Is3DVideoMode = pSettingModeParams->Is3DVideoMode;
     cbMode_GetHVTiming(pcbe,
                        pModeParams->TargetModePara.XRes,
                        pModeParams->TargetModePara.YRes,
                        pModeParams->TargetModePara.RefRate,
-                       pModeParams->TargetModePara.bInterlace,
+                       QueryModeFlags,
                        Device,
                        &Timing);
     //pcbe->SpecifyDestTimingSrc[IGAIndex].Flag = 0;

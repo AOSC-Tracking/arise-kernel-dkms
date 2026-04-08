@@ -28,52 +28,6 @@
 #include "../../Hw/HwBlock/CBiosDIU_HDCP.h"
 #include "../../Hw/CBiosHwShare.h"
 
- static CBIOS_U8 cbHDMIMonitor_HDACGetCAValue(PCBIOS_EXTENSION_COMMON pcbe, CBIOS_ACTIVE_TYPE DeviceType)
- {
-     CBIOS_U8 CA_Value = 0;
-     PCBIOS_DEVICE_COMMON pDevCommon = cbGetDeviceCommon(&pcbe->DeviceMgr, DeviceType);
-     PCBIOS_MONITOR_MISC_ATTRIB pMonitorAttrib = &(pDevCommon->EdidStruct.Attribute);
-
-     //pMonitorAttrib->SpeakerAllocationData
-     //  bit |  0  |  1  |  2  |  3  |  4  |  5  |  6
-     //-------------------------------------------------
-     //      | FLR | LFE | FC  | RLR | RC  | FLRC| RLRC
-
-     if(pMonitorAttrib->IsCEA861Monitor)
-     {
-         // refer to CEA-861D table 20
-         if(pMonitorAttrib->SpeakerAllocationData & 0x02)    // Lower Frequency Effect
-             CA_Value |= BIT0;
-
-         if(pMonitorAttrib->SpeakerAllocationData & 0x04)     // Front Center
-             CA_Value |= BIT1;
-
-         if((pMonitorAttrib->SpeakerAllocationData & 0x60) == 0)
-         {
-             if(pMonitorAttrib->SpeakerAllocationData & 0x10)     // Rear Center
-                 CA_Value |= BIT2;
-
-             if(pMonitorAttrib->SpeakerAllocationData & 0x08)    // Rear Left/Rear Right
-                 CA_Value |= BIT3;
-         }
-
-         if((pMonitorAttrib->SpeakerAllocationData & 0x40) && (pMonitorAttrib->SpeakerAllocationData & 0x08))
-             CA_Value |= BIT4;
-
-         if(pMonitorAttrib->SpeakerAllocationData & 0x20)   // Front Left Center/Front Right Center
-         {
-             CA_Value |= BIT4;
-             if(pMonitorAttrib->SpeakerAllocationData & 0x10)
-                 CA_Value |= BIT3;
-
-             if(pMonitorAttrib->SpeakerAllocationData & 0x08)
-                 CA_Value |= (BIT2 | BIT3);
-         }
-     }
-
-     return CA_Value;
- }
-
 static CBIOS_VOID cbHDMIMonitor_GenerateAVIInfoFrameData(PCBIOS_EXTENSION_COMMON pcbe, PCBIOS_DISP_MODE_PARAMS pModeParams, PCBIOS_AVI_INFO_FRAME_DATA pAVIInfoFrameData)
 {
     CBIOS_U8    VICCode = pModeParams->VICCode;
@@ -460,6 +414,11 @@ static CBIOS_VOID cbHDMIMonitor_GenerateInfoFrameData(PCBIOS_EXTENSION_COMMON pc
                         HDMI_MIN_CTL_PERIOD - HDMI_TRAILING_GUARD_BAND_PERIOD) / 32;
     pInfoFrameData->HDMIMaxPacketNum = cb_min(HDMIMaxPacketNum, 15);
 
+    if (pInfoFrameData->HDMIMaxPacketNum == 0)
+    {
+        pInfoFrameData->HDMIMaxPacketNum = 1;
+    }
+
     cbDebugPrint((MAKE_LEVEL(HDMI, INFO), "VICCode=%d.\n", pModeParams->VICCode));
     if ((pModeParams->VICCode > 0) && (pModeParams->VICCode <= CBIOS_HDMIFORMATCOUNTS))
     {
@@ -516,7 +475,7 @@ static CBIOS_VOID cbHDMIMonitor_SetAVIInfoFrame(PCBIOS_EXTENSION_COMMON pcbe, PC
 
     ucAVIData[3] = 0x100 - checksum;
 
-    cbDIU_HDMI_WriteFIFO(pcbe, DeviceType, *FIFOIndex, ucAVIData, 32);
+    cbDPPort_WriteFIFO(pcbe, DeviceType, *FIFOIndex, ucAVIData, 32);
     (*FIFOIndex)++;
 }
 
@@ -535,7 +494,8 @@ static CBIOS_VOID cbHDMIMonitor_SetAudioInfoFrame(PCBIOS_EXTENSION_COMMON pcbe, 
         return;
     }
 
-    NumofChannels = cbDIU_HDAC_GetChannelNums(pcbe, HDACModuleIndex);
+    //NumofChannels = cbDIU_HDAC_GetChannelNums(pcbe, HDACModuleIndex);
+    NumofChannels = 1;      // 2 Channels
 
     ucAAIData[0] = 0x84;	// Packet Type = 0x84
     ucAAIData[1] = 0x01;	// Version number = 0x01
@@ -590,7 +550,7 @@ static CBIOS_VOID cbHDMIMonitor_SetAudioInfoFrame(PCBIOS_EXTENSION_COMMON pcbe, 
     }
     else
     {
-        ucAAIData[7] = cbHDMIMonitor_HDACGetCAValue(pcbe, DeviceType);
+        ucAAIData[7] = cbDevHDACGetCAValue(pcbe, DeviceType);
     }
     ucAAIData[8] = 0x00;
 
@@ -602,7 +562,7 @@ static CBIOS_VOID cbHDMIMonitor_SetAudioInfoFrame(PCBIOS_EXTENSION_COMMON pcbe, 
 
     ucAAIData[3] = 0x100 - checksum;
 
-    cbDIU_HDMI_WriteFIFO(pcbe, DeviceType, *FIFOIndex, ucAAIData, 32);
+    cbDPPort_WriteFIFO(pcbe, DeviceType, *FIFOIndex, ucAAIData, 32);
     (*FIFOIndex)++;
 
 }
@@ -734,7 +694,7 @@ PCBIOS_U8 FIFOIndex)
     }
     VSInfoFrame[3] = 0xFF - Checksum + 1;
 
-    cbDIU_HDMI_WriteFIFO(pcbe, DeviceType, *FIFOIndex, VSInfoFrame, 32);
+    cbDPPort_WriteFIFO(pcbe, DeviceType, *FIFOIndex, VSInfoFrame, 32);
     (*FIFOIndex)++;
 }
 
@@ -823,7 +783,7 @@ PCBIOS_U8 FIFOIndex)
     }
     VSInfoFrame[3] = 0xFF - Checksum + 1;
 
-    cbDIU_HDMI_WriteFIFO(pcbe, DeviceType, *FIFOIndex, VSInfoFrame, 32);
+    cbDPPort_WriteFIFO(pcbe, DeviceType, *FIFOIndex, VSInfoFrame, 32);
     (*FIFOIndex)++;
 }
 
@@ -907,7 +867,7 @@ static CBIOS_VOID cbHDMIMonitor_SetGamutMetadataPacket(PCBIOS_EXTENSION_COMMON p
         cb_memcpy(&(GamutMetadataPacket[4]), pGBDPara->pRangeData, DataSize);
     }
 
-    cbDIU_HDMI_WriteFIFO(pcbe, DeviceType, *FIFOIndex, GamutMetadataPacket, 32);
+    cbDPPort_WriteFIFO(pcbe, DeviceType, *FIFOIndex, GamutMetadataPacket, 32);
     (*FIFOIndex)++;
 }
 
@@ -1146,11 +1106,14 @@ static CBIOS_VOID cbHDMIMonitor_SCDC_Configure(PCBIOS_EXTENSION_COMMON pcbe, PCB
     CBIOS_BOOL              bRet = CBIOS_FALSE;
     PCBIOS_DEVICE_COMMON    pDevCommon = pHDMIMonitorContext->pDevCommon;
 
+    pHDMIMonitorContext->SCDCConfigureFailed = 0;
+
     //Offset = 0x1: Sink Version
     bRet = cbHDMIMonitor_SCDC_ReadData(pcbe, pDevCommon, &Data, 0x1, 0x1);
 
     if(!bRet)
     {
+        pHDMIMonitorContext->SCDCConfigureFailed = 1;
         cbDebugPrint((MAKE_LEVEL(HDMI, ERROR), "%s: SCDC read Sink Version failed!\n", FUNCTION_NAME));
         return;
     }
@@ -1172,6 +1135,7 @@ static CBIOS_VOID cbHDMIMonitor_SCDC_Configure(PCBIOS_EXTENSION_COMMON pcbe, PCB
     }
     else
     {
+        pHDMIMonitorContext->SCDCConfigureFailed = 1;
         cbDebugPrint((MAKE_LEVEL(HDMI, ERROR), "%s: SCDC write Source Version failed!\n", FUNCTION_NAME));
     }
 
@@ -1199,6 +1163,7 @@ static CBIOS_VOID cbHDMIMonitor_SCDC_Configure(PCBIOS_EXTENSION_COMMON pcbe, PCB
     }
     else
     {
+        pHDMIMonitorContext->SCDCConfigureFailed = 1;
         cbDebugPrint((MAKE_LEVEL(HDMI, ERROR), "%s: SCDC write TMDS_Config failed!\n", FUNCTION_NAME));
     }
 
@@ -1333,7 +1298,7 @@ CBIOS_BOOL cbHDMIMonitor_Detect(PCBIOS_VOID pvcbe, PCBIOS_HDMI_MONITOR_CONTEXT p
                 if(cbHDMIMonitor_SCDC_ReadData(pcbe, pDevCommon, &(SCDCStatusFlags.ScramblerStatus), 0x21, 0x1))
                 {
                     //if scramble was enabled, but scramble_status is not 1, should reconfig SCDC
-                    if((pHDMIMonitorContext->ScramblingEnable && !SCDCStatusFlags.Scrambling_Status)
+                    if(pHDMIMonitorContext->SCDCConfigureFailed || (pHDMIMonitorContext->ScramblingEnable && !SCDCStatusFlags.Scrambling_Status)
                         || (!pHDMIMonitorContext->ScramblingEnable && SCDCStatusFlags.Scrambling_Status))
                     {
                         //per HDMI2.0 spec,before write TMDS config,source should suspend transmission of TMDS clock and data
@@ -1365,17 +1330,13 @@ CBIOS_BOOL cbHDMIMonitor_Detect(PCBIOS_VOID pvcbe, PCBIOS_HDMI_MONITOR_CONTEXT p
             if ((pDevCommon->CurrentMonitorType == CBIOS_MONITOR_TYPE_HDMI) &&
                 (pMonitorAttrib->VSDBData.VSDBHeader.SourcePhyAddr != CEC_INVALID_PHYSICAL_ADDR))
             {
-                CBIOS_CEC_INDEX CECIndex = CBIOS_CEC_INDEX1;
-
-                CECIndex = CBIOS_CEC_INDEX1;
-
                 //get physical address
-                pcbe->CECPara[CECIndex].PhysicalAddr = pMonitorAttrib->VSDBData.VSDBHeader.SourcePhyAddr;
+                pcbe->CECPara[CBIOS_CEC_INDEX1].PhysicalAddr = pMonitorAttrib->VSDBData.VSDBHeader.SourcePhyAddr;
 
-                if (pcbe->CECPara[CECIndex].CECEnable)
+                if (pcbe->CECPara[CBIOS_CEC_INDEX1].CECEnable)
                 {
                     //allocate logical address
-                    cbCECAllocateLogicalAddr(pcbe, CECIndex);
+                    cbCECAllocateLogicalAddr(pcbe, CBIOS_CEC_INDEX1);
                 }
             }
         }
@@ -1438,6 +1399,7 @@ CBIOS_VOID cbHDMIMonitor_SetMode(PCBIOS_VOID pvcbe, PCBIOS_HDMI_MONITOR_CONTEXT 
     CBIOS_BOOL              bHDMIDevice     = pDevCommon->EdidStruct.Attribute.IsCEA861HDMI;
     CBIOS_U32               ClockFreq       = pHDMIMonitorContext->HDMIClock;
     CBIOS_BOOL              bHDCPCapable    = CBIOS_TRUE;
+    PCBIOS_MONITOR_MISC_ATTRIB pMonitorAttrib = &(pDevCommon->EdidStruct.Attribute);
 
     if (HDMIModuleIndex == CBIOS_MODULE_INDEX_INVALID)
     {
@@ -1458,6 +1420,19 @@ CBIOS_VOID cbHDMIMonitor_SetMode(PCBIOS_VOID pvcbe, PCBIOS_HDMI_MONITOR_CONTEXT 
         cbDIU_HDMI_SetHDCPDelay(pcbe, HDMIModuleIndex, bHDCPCapable);
         cbDIU_HDMI_SetPixelFormat(pcbe, HDMIModuleIndex, pModeParams->TargetModePara.OutputSignal);
         cbDIU_HDMI_SetColorDepth(pcbe, HDMIModuleIndex, pModeParams->BitPerComponent * 3);
+
+        if ((!cb_strcmp(pMonitorAttrib->MonitorID, (CBIOS_UCHAR*)"LEN61F1")) && (!cb_strcmp(pMonitorAttrib->MonitorName, (CBIOS_UCHAR*)"LEN T32h-20")) &&
+            (pModeParams->TargetModePara.XRes == 2560) && (pModeParams->TargetModePara.YRes == 1440) && (pModeParams->TargetModePara.RefRate > 7450))
+        {
+            if (HDMIModuleIndex == CBIOS_MODULE_INDEX1)
+            {
+                cbMMIOWriteReg32(pcbe, 0x8280, 0x00900000, 0xFF00FFFF); // Delay_for_HDCP_SEL = 1, Delay_for_HDCP = 0x10
+            }
+            else if (HDMIModuleIndex == CBIOS_MODULE_INDEX2)
+            {
+                cbMMIOWriteReg32(pcbe, 0x33D70, 0x00900000, 0xFF00FFFF);
+            }
+        }
 
         //HDMI CLK LANE is used for PHY to generate 1/4 TMDS Clock Rate when TMDS Character Rates above 340Mcsc
         if(ClockFreq > 3400000)
@@ -1481,7 +1456,7 @@ CBIOS_VOID cbHDMIMonitor_OnOff(PCBIOS_VOID pvcbe, PCBIOS_HDMI_MONITOR_CONTEXT pH
     //CBIOS_HDAC_PARA         HDACPara        = {0};
     PCBIOS_DEVICE_COMMON    pDevCommon      = pHDMIMonitorContext->pDevCommon;
     CBIOS_MODULE_INDEX      HDMIModuleIndex = cbGetModuleIndex(pcbe, pDevCommon->DeviceType, CBIOS_MODULE_TYPE_HDMI);
-    CBIOS_MODULE_INDEX      IGAIndex        = cbGetModuleIndex(pcbe, pDevCommon->DeviceType, CBIOS_MODULE_TYPE_IGA);
+    CBIOS_MODULE_INDEX      IGAIndex        = CBIOS_MODULE_INDEX_INVALID;
     PCBIOS_DISP_MODE_PARAMS pModeParams     = CBIOS_NULL;
     CBIOS_BOOL              bHDMIDevice     = pDevCommon->EdidStruct.Attribute.IsCEA861HDMI;
     CBIOS_BOOL              bSCDCPresent    = pDevCommon->EdidStruct.Attribute.HFSCDSData.IsSCDCPresent;
@@ -1497,6 +1472,8 @@ CBIOS_VOID cbHDMIMonitor_OnOff(PCBIOS_VOID pvcbe, PCBIOS_HDMI_MONITOR_CONTEXT pH
 
     if (bOn)
     {
+        IGAIndex = cbGetModuleIndex(pcbe, pDevCommon->DeviceType, CBIOS_MODULE_TYPE_IGA);
+
         cbDIU_HDMI_SetModuleMode(pcbe, HDMIModuleIndex, bHDMIDevice);
 
         if (bHDMIDevice)
@@ -1509,17 +1486,17 @@ CBIOS_VOID cbHDMIMonitor_OnOff(PCBIOS_VOID pvcbe, PCBIOS_HDMI_MONITOR_CONTEXT pH
             cbHDMIMonitor_SetInfoFrame(pcbe, &pHDMIMonitorContext->HDMIInfoFrame, pDevCommon->DeviceType);
             //cbHDMIMonitor_SetHDACConnectStatus(pcbe, &HDACPara);
 
-            if(bSCDCPresent)
+            if (bSCDCPresent)
             {
                 cbHDMIMonitor_SCDC_Configure(pcbe, pHDMIMonitorContext);
             }
 
-            if(pcbe->ChipCaps.bSupportScrambling)
+            if (pcbe->ChipCaps.bSupportScrambling)
             {
                 cbDIU_HDMI_ConfigScrambling(pcbe, HDMIModuleIndex, pHDMIMonitorContext->ScramblingEnable);
             }
 
-            if(pcbe->ChipCaps.bSupportReadRequest)
+            if (pcbe->ChipCaps.bSupportReadRequest)
             {
                 cbDIU_HDMI_EnableReadRequest(pcbe, HDMIModuleIndex, pHDMIMonitorContext->ReadRequestEnable);
             }
@@ -1533,9 +1510,9 @@ CBIOS_VOID cbHDMIMonitor_OnOff(PCBIOS_VOID pvcbe, PCBIOS_HDMI_MONITOR_CONTEXT pH
         pModeParams     = pcbe->DispMgr.pModeParams[IGAIndex];
 
         CSCAdjustPara.InputFormat = pModeParams->TargetModePara.DevInColorSpace;
-        if(pModeParams->TargetModePara.OutputSignal != CBIOS_RGBOUTPUT)
+        if (pModeParams->TargetModePara.OutputSignal != CBIOS_RGBOUTPUT)
         {
-            if(pModeParams->TargetModePara.YRes >= 720)
+            if (pModeParams->TargetModePara.YRes >= 720)
             {
                 CSCAdjustPara.OutputFormat = CSC_FMT_YCBCR709;
             }
@@ -1549,13 +1526,13 @@ CBIOS_VOID cbHDMIMonitor_OnOff(PCBIOS_VOID pvcbe, PCBIOS_HDMI_MONITOR_CONTEXT pH
             //If a Sink declares a selectable RGB Quantization Range (QS=1) in EDID VCDB
             //It supports the reception of either type of RGB Quantization Range(Limited Range and Full Range)
             //Here, we set CSC_FMT_RGB to send Full Range pixel values
-            if(bQS)
+            if (bQS)
             {
                 CSCAdjustPara.OutputFormat = CSC_FMT_RGB;
             }
             else
             {
-                if((pHDMIMonitorContext->HDMIInfoFrame.bIsCEAMode == CBIOS_TRUE) && (pModeParams->VICCode > 1))
+                if ((pHDMIMonitorContext->HDMIInfoFrame.bIsCEAMode == CBIOS_TRUE) && (pModeParams->VICCode > 1))
                 {
                     CSCAdjustPara.OutputFormat = CSC_FMT_LIMITED_RGB;
                 }
@@ -1574,15 +1551,17 @@ CBIOS_VOID cbHDMIMonitor_OnOff(PCBIOS_VOID pvcbe, PCBIOS_HDMI_MONITOR_CONTEXT pH
     {
         cbDIU_HDMI_DisableVideoAudio(pcbe, HDMIModuleIndex);
 
-        if(pcbe->ChipCaps.bSupportScrambling)
+        if (pcbe->ChipCaps.bSupportScrambling)
         {
             cbDIU_HDMI_ConfigScrambling(pcbe, HDMIModuleIndex, CBIOS_FALSE);
         }
 
-        if(pcbe->ChipCaps.bSupportReadRequest)
+        if (pcbe->ChipCaps.bSupportReadRequest)
         {
             cbDIU_HDMI_EnableReadRequest(pcbe, HDMIModuleIndex, CBIOS_FALSE);
         }
+
+        pHDMIMonitorContext->SCDCConfigureFailed = 0;
     }
 }
 

@@ -100,6 +100,7 @@ CBIOS_BOOL cbInitialize(PCBIOS_VOID pvcbe, PCBIOS_PARAM_INIT pCBParamInit)
     pcbe->bRunOnQT = pCBParamInit->bRunOnQT;
     pcbe->bDriverLoadQTiming = pCBParamInit->bDriverLoadQTiming;
     pcbe->RomImageLength = pCBParamInit->RomImageLength;
+    pcbe->CbiosFlags = pCBParamInit->CbiosFlags;
 
     for(i = 0;i < CBIOS_MAX_I2CBUS;i++)
     {

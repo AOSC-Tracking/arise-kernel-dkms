@@ -32,6 +32,7 @@
 #include "gf_fbdev.h"
 #include "gf_capture_drv.h"
 #include "gf_splice.h"
+#include "gf_params.h"
 #if DRM_VERSION_CODE < KERNEL_VERSION(4, 8, 0)
 #include <drm/drm_plane_helper.h>
 #endif
@@ -78,11 +79,18 @@ static const int chx_cursor_formats[] = {
     DRM_FORMAT_ARGB8888,
 };
 
-static  char*  plane_name[] = {
+static char* plane_name[] = {
     "PS",
     "SS",
     "TS",
     "FS",
+};
+
+static char* stream_name[] = {
+    "Stream0",
+    "Stream1",
+    "Stream2",
+    "Stream3",
 };
 
 static const unsigned int vsync_int_tbl[] = {
@@ -141,6 +149,9 @@ static  const struct drm_plane_helper_funcs gf_plane_helper_funcs = {
     .atomic_check = gf_plane_atomic_check,
     .atomic_update = gf_plane_atomic_update,
     .atomic_disable = gf_plane_atomic_disable,
+#if defined(CONFIG_DRM_PANIC)
+    .get_scanout_buffer = gf_plane_get_scanout_buffer,
+#endif
 };
 
 static const struct drm_crtc_funcs gf_crtc_funcs = {
@@ -211,7 +222,7 @@ static const struct drm_crtc_helper_funcs gf_helper_funcs = {
 
 #endif
 
-static  void  disp_info_pre_init(disp_info_t*  disp_info)
+void disp_info_pre_init(disp_info_t* disp_info)
 {
     unsigned int i = 0;
 
@@ -226,7 +237,7 @@ static  void  disp_info_pre_init(disp_info_t*  disp_info)
     disp_info->cbios_inner_spin_lock = gf_create_spinlock(0);
     disp_info->cbios_aux_mutex = gf_create_mutex();
 
-    for(i = 0;i < MAX_I2CBUS;i++)
+    for (i = 0; i < MAX_I2CBUS; i++)
     {
         disp_info->cbios_i2c_mutex[i] = gf_create_mutex();
     }
@@ -234,9 +245,12 @@ static  void  disp_info_pre_init(disp_info_t*  disp_info)
 #if LINUX_VERSION_CODE <= KERNEL_VERSION(2, 6, 35)
     disp_info->wq = create_workqueue("arise");
 #endif
+
+    disp_info->flash_mutex = gf_create_mutex();
+    disp_info->flash_cache_is_valid = FALSE;
 }
 
-static  void  disp_info_deinit(disp_info_t*  disp_info)
+void disp_info_deinit(disp_info_t* disp_info)
 {
 #if LINUX_VERSION_CODE <= KERNEL_VERSION(2, 6, 35)
     destroy_workqueue(disp_info->wq);
@@ -276,6 +290,13 @@ static  void  disp_info_deinit(disp_info_t*  disp_info)
     }
 #endif
 
+    gf_destroy_mutex(disp_info->flash_mutex);
+    disp_info->flash_mutex = NULL;
+
+    if (disp_info->flash_cache) {
+        gf_free(disp_info->flash_cache);
+        disp_info->flash_cache = NULL;
+    }
 }
 
 #if  DRM_VERSION_CODE >= KERNEL_VERSION(4, 8, 0)
@@ -412,7 +433,7 @@ int disp_create_alpha_source_property(struct drm_plane* plane)
 
 void disp_create_plane_property(struct drm_device* dev, gf_plane_t* gf_plane)
 {
-    int  zpos = 0;
+    int zpos = 0;
 
 #if DRM_VERSION_CODE >= KERNEL_VERSION(4, 10, 0)
 #if DRM_VERSION_CODE < KERNEL_VERSION(4, 13, 0)
@@ -434,7 +455,7 @@ void disp_create_plane_property(struct drm_device* dev, gf_plane_t* gf_plane)
         }
     }
 
-    if(gf_plane->base_plane.state)
+    if (gf_plane->base_plane.state)
     {
         gf_plane->base_plane.state->rotation = DRM_ROTATE_0;
     }
@@ -447,10 +468,10 @@ void disp_create_plane_property(struct drm_device* dev, gf_plane_t* gf_plane)
 #endif
 
 #if DRM_VERSION_CODE >= KERNEL_VERSION(4, 20, 0)
-     drm_plane_create_blend_mode_property(&gf_plane->base_plane,
-                                            BIT(DRM_MODE_BLEND_PIXEL_NONE) |
-                                            BIT(DRM_MODE_BLEND_PREMULTI) |
-                                            BIT(DRM_MODE_BLEND_COVERAGE));
+    drm_plane_create_blend_mode_property(&gf_plane->base_plane,
+                                         BIT(DRM_MODE_BLEND_PIXEL_NONE) |
+                                         BIT(DRM_MODE_BLEND_PREMULTI) |
+                                         BIT(DRM_MODE_BLEND_COVERAGE));
 #else
     disp_create_blend_mode_property(&gf_plane->base_plane,
                                     BIT(DRM_MODE_BLEND_PIXEL_NONE) |
@@ -460,23 +481,23 @@ void disp_create_plane_property(struct drm_device* dev, gf_plane_t* gf_plane)
 
     disp_create_alpha_source_property(&gf_plane->base_plane);
 
-    zpos = (gf_plane->is_cursor)? 32 : gf_plane->plane_type;
+    zpos = (gf_plane->is_cursor) ? 32 : gf_plane->plane_type;
     drm_plane_create_zpos_immutable_property(&gf_plane->base_plane, zpos); //we do not support dynamic plane order
 }
 
 
-static gf_plane_t*  disp_gene_plane_create(disp_info_t* disp_info,  int  index, GF_PLANE_TYPE  type, int is_cursor)
+static gf_plane_t* disp_gene_plane_create(disp_info_t* disp_info, int index, GF_PLANE_TYPE plane_type)
 {
-    gf_card_t*  gf_card = disp_info->gf_card;
-    struct  drm_device*  drm = gf_card->drm_dev;
-    gf_plane_t*  gf_plane = NULL;
-    gf_plane_state_t*  gf_pstate = NULL;
-    int  ret = 0;
-    const int*  formats = NULL;
+    gf_card_t *gf_card = disp_info->gf_card;
+    struct drm_device *drm = gf_card->drm_dev;
+    gf_plane_t *gf_plane = NULL;
+    gf_plane_state_t *gf_pstate = NULL;
+    const int *formats = NULL;
     const uint64_t *modifiers = NULL;
-    int  fmt_count = 0;
-    int  drm_ptype;
-    char* name;
+    int fmt_count = 0;
+    int drm_ptype, stream_in = GF_STREAM_INVALID;
+    char *name;
+    int ret = 0;
 
     gf_plane = gf_calloc(sizeof(gf_plane_t));
     if (!gf_plane)
@@ -485,18 +506,20 @@ static gf_plane_t*  disp_gene_plane_create(disp_info_t* disp_info,  int  index, 
     }
 
     gf_plane->crtc_index = index;
-    if(is_cursor)
+    gf_plane->plane_type = plane_type;
+    if (GF_PLANE_CURSOR == plane_type)
     {
-        gf_plane->plane_type = GF_MAX_PLANE;
         gf_plane->is_cursor = 1;
         gf_plane->can_window = 1;
+        gf_plane->can_up_scale = 0;
+        gf_plane->can_down_scale = 0;
     }
     else
     {
-        gf_plane->plane_type = type;
-        gf_plane->can_window = (type != GF_PLANE_PS)? 1 : 0;
-        gf_plane->can_up_scale = (disp_info->up_scale_plane_mask[index] & (1 << type))? 1 : 0;
-        gf_plane->can_down_scale = (disp_info->down_scale_plane_mask[index] & (1 << type))? 1 : 0;
+        stream_in = disp_get_input_stream(disp_info, plane_type);
+        gf_plane->can_window = (stream_in != GF_STREAM_PS) ? 1 : 0;
+        gf_plane->can_up_scale = (disp_info->up_scale_plane_mask[index] & (1 << stream_in)) ? 1 : 0;
+        gf_plane->can_down_scale = (disp_info->down_scale_plane_mask[index] & (1 << stream_in)) ? 1 : 0;
     }
 
     gf_pstate = gf_calloc(sizeof(gf_plane_state_t));
@@ -508,7 +531,7 @@ static gf_plane_t*  disp_gene_plane_create(disp_info_t* disp_info,  int  index, 
     gf_pstate->base_pstate.plane = &gf_plane->base_plane;
     gf_plane->base_plane.state = &gf_pstate->base_pstate;
 
-    if(is_cursor)
+    if (GF_PLANE_CURSOR == plane_type)
     {
         formats = chx_cursor_formats;
         fmt_count = sizeof(chx_cursor_formats)/sizeof(chx_cursor_formats[0]);
@@ -525,8 +548,8 @@ static gf_plane_t*  disp_gene_plane_create(disp_info_t* disp_info,  int  index, 
     #if  DRM_VERSION_CODE >= KERNEL_VERSION(5, 14, 0)
         modifiers = chx_plane_modifiers;
     #endif
-        name = plane_name[type];
-        drm_ptype = (type == GF_PLANE_PS)? DRM_PLANE_TYPE_PRIMARY : DRM_PLANE_TYPE_OVERLAY;
+        name = plane_name[plane_type];
+        drm_ptype = (plane_type == GF_PLANE_PS) ? DRM_PLANE_TYPE_PRIMARY : DRM_PLANE_TYPE_OVERLAY;
     }
 
 #if DRM_VERSION_CODE < KERNEL_VERSION(4, 14, 0)
@@ -543,7 +566,7 @@ static gf_plane_t*  disp_gene_plane_create(disp_info_t* disp_info,  int  index, 
                                     "IGA%d-%s", (index+1), name);
 #endif
 
-    if(ret)
+    if (ret)
     {
         goto fail;
     }
@@ -552,16 +575,17 @@ static gf_plane_t*  disp_gene_plane_create(disp_info_t* disp_info,  int  index, 
 
     disp_create_plane_property(drm, gf_plane);
 
-    DRM_DEBUG_KMS("plane=%d,name=%s\n", gf_plane->base_plane.index, gf_plane->base_plane.name);
+    DRM_DEBUG_KMS("plane=%d, name=%s\n", gf_plane->base_plane.index, gf_plane->base_plane.name);
     return  gf_plane;
 
 fail:
-    if(gf_plane)
+    if (gf_plane)
     {
         gf_free(gf_plane);
         gf_plane = NULL;
     }
-    if(gf_pstate)
+
+    if (gf_pstate)
     {
         gf_free(gf_pstate);
         gf_pstate = NULL;
@@ -571,36 +595,36 @@ fail:
 
 #else
 
-static gf_plane_t*  disp_gene_plane_create(disp_info_t* disp_info,  int  index, GF_PLANE_TYPE  type, int is_cursor)
+static gf_plane_t* disp_gene_plane_create(disp_info_t* disp_info, int index, GF_PLANE_TYPE plane_type)
 {
-    gf_card_t*  gf_card = disp_info->gf_card;
-    struct  drm_device*  drm = gf_card->drm_dev;
-    gf_plane_t*  gf_plane = NULL;
-    int  ret = 0;
-    const int*  formats = 0;
-    int  fmt_count = 0;
+    gf_card_t *gf_card = disp_info->gf_card;
+    struct drm_device *drm = gf_card->drm_dev;
+    gf_plane_t *gf_plane = NULL;
+    const int *formats = 0;
+    int ret = 0, fmt_count = 0, stream_in = GF_STREAM_INVALID;
 
     gf_plane = gf_calloc(sizeof(gf_plane_t));
     if (!gf_plane)
     {
-        gf_error("Alloc plane failed. plane type = %d, crtc index = %d.\n", type, index);
+        gf_error("Alloc plane failed. plane type = %d, crtc index = %d.\n", plane_type, index);
         return  NULL;
     }
 
     gf_plane->crtc_index = index;
-    gf_plane->plane_type = type;
-    gf_plane->can_window = (type != GF_PLANE_PS)? 1 : 0;
-    gf_plane->can_up_scale = (disp_info->up_scale_plane_mask[index] & (1 << type))? 1 : 0;
-    gf_plane->can_down_scale = (disp_info->down_scale_plane_mask[index] & (1 << type))? 1 : 0;
+    gf_plane->plane_type = plane_type;
+    stream_in = disp_get_input_stream(disp_info, plane_type);
+    gf_plane->can_window = (stream_in != GF_STREAM_PS) ? 1 : 0;
+    gf_plane->can_up_scale = (disp_info->up_scale_plane_mask[index] & (1 << stream_in)) ? 1 : 0;
+    gf_plane->can_down_scale = (disp_info->down_scale_plane_mask[index] & (1 << stream_in)) ? 1 : 0;
 
     formats = chx_plane_formats;
     fmt_count = sizeof(chx_plane_formats)/sizeof(chx_plane_formats[0]);
 
     ret = drm_plane_init(drm, &gf_plane->base_plane, (1 << index), &gf_plane_funcs, formats, fmt_count, FALSE);
 
-    if(ret)
+    if (ret)
     {
-        gf_error("Init plane failed. plane type = %d, crtc index = %d.\n", type, index);
+        gf_error("Init plane failed. plane type = %d, crtc index = %d.\n", plane_type, index);
         gf_free(gf_plane);
         gf_plane = NULL;
     }
@@ -611,13 +635,22 @@ static gf_plane_t*  disp_gene_plane_create(disp_info_t* disp_info,  int  index, 
 void  disp_irq_init(disp_info_t* disp_info)
 {
     gf_card_t*  gf_card = disp_info->gf_card;
+    adapter_info_t *adp_info = disp_info->adp_info;
     struct drm_device*  drm = gf_card->drm_dev;
 
     INIT_WORK(&disp_info->hotplug_work, gf_hotplug_work_func);
     INIT_WORK(&disp_info->dp_irq_work, gf_dp_irq_work_func);
     INIT_WORK(&disp_info->hda_work, gf_hda_work_func);
     INIT_WORK(&disp_info->hdcp_work, gf_hdcp_work_func);
-    disp_info->irq_chip_func = &irq_chip_funcs;
+
+    if (adp_info->chip_id == CHIP_ARISE1020 && adp_info->revision_id == 0x10)
+    {
+        disp_info->irq_chip_func = &irq_hp_chip_funcs;
+    }
+    else
+    {
+        disp_info->irq_chip_func = &irq_e3k_chip_funcs;
+    }
 
     drm->vblank_disable_immediate = true;
 
@@ -690,15 +723,16 @@ void disp_irq_uninstall(disp_info_t* disp_info)
 }
 
 #if  DRM_VERSION_CODE >= KERNEL_VERSION(4, 8, 0)
-static int  disp_crtc_init(disp_info_t* disp_info, unsigned int index)
+static int disp_crtc_init(disp_info_t *disp_info, unsigned int index)
 {
-    gf_card_t*  gf_card = disp_info->gf_card;
-    struct drm_device*  drm = gf_card->drm_dev;
-    gf_crtc_t*  gf_crtc = NULL;
-    gf_crtc_state_t*  crtc_state = NULL;
-    gf_plane_t*   gf_plane[GF_MAX_PLANE] = {NULL};
-    gf_plane_t*   gf_cursor = NULL;
-    int       ret = 0, type = 0;
+    gf_card_t *gf_card = disp_info->gf_card;
+    struct drm_device *drm = gf_card->drm_dev;
+    gf_crtc_t *gf_crtc = NULL;
+    gf_crtc_state_t *crtc_state = NULL;
+    gf_plane_t *gf_plane[GF_MAX_PLANE] = {NULL};
+    gf_plane_t *gf_cursor = NULL;
+    GF_STREAM_TYPE stream_in = GF_STREAM_INVALID;
+    int ret = 0, type = 0;
 
     gf_crtc = gf_calloc(sizeof(gf_crtc_t));
     if (!gf_crtc)
@@ -729,12 +763,12 @@ static int  disp_crtc_init(disp_info_t* disp_info, unsigned int index)
 
     gf_crtc->plane_cnt = disp_info->num_plane[index];
 
-    for(type = 0; type < gf_crtc->plane_cnt; type++)
+    for (type = 0; type < gf_crtc->plane_cnt; type++)
     {
-        gf_plane[type] = disp_gene_plane_create(disp_info, index, type, 0);
+        gf_plane[type] = disp_gene_plane_create(disp_info, index, type);
     }
 
-    gf_cursor = disp_gene_plane_create(disp_info, index, 0, 1);
+    gf_cursor = disp_gene_plane_create(disp_info, index, GF_PLANE_CURSOR);
 
     ret = drm_crtc_init_with_planes(drm, &gf_crtc->base_crtc,
                                     &gf_plane[GF_PLANE_PS]->base_plane,
@@ -742,7 +776,7 @@ static int  disp_crtc_init(disp_info_t* disp_info, unsigned int index)
                                     &gf_crtc_funcs,
                                     "IGA%d", (index + 1));
 
-    if(ret)
+    if (ret)
     {
         goto  fail;
     }
@@ -775,11 +809,11 @@ static int  disp_crtc_init(disp_info_t* disp_info, unsigned int index)
 
 static int  disp_crtc_init(disp_info_t* disp_info, unsigned int index)
 {
-    gf_card_t*  gf_card = disp_info->gf_card;
-    struct drm_device*  drm = gf_card->drm_dev;
-    gf_crtc_t*  gf_crtc = NULL;
-    gf_plane_t*   gf_plane[GF_MAX_PLANE] = {NULL};
-    int       ret = 0, type = 0, i = 0;
+    gf_card_t *gf_card = disp_info->gf_card;
+    struct drm_device *drm = gf_card->drm_dev;
+    gf_crtc_t *gf_crtc = NULL;
+    gf_plane_t *gf_plane[GF_MAX_PLANE] = {NULL};
+    int ret = 0, type = 0, i = 0;
 
     gf_crtc = gf_calloc(sizeof(gf_crtc_t));
     if (!gf_crtc)
@@ -803,8 +837,7 @@ static int  disp_crtc_init(disp_info_t* disp_info, unsigned int index)
     gf_crtc->vsync_int = vsync_int_tbl[index];
 
     ret = drm_crtc_init(drm, &gf_crtc->base_crtc, &gf_crtc_funcs);
-
-    if(ret)
+    if (ret)
     {
         goto  fail;
     }
@@ -817,25 +850,25 @@ static int  disp_crtc_init(disp_info_t* disp_info, unsigned int index)
 
     drm_crtc_helper_add(&gf_crtc->base_crtc, &gf_helper_funcs);
 
-    //in legacy kms, plane is stand for overlay exclude primary stream and cursor
-    for(type = GF_PLANE_SS; type < gf_crtc->plane_cnt; type++)
+    //in legacy kms, plane is stand for overlay exclude primary plane and cursor
+    for (type = GF_PLANE_SS; type < gf_crtc->plane_cnt; type++)
     {
-        gf_plane[type] = disp_gene_plane_create(disp_info, index, type, 0);
+        gf_plane[type] = disp_gene_plane_create(disp_info, index, type);
     }
 
     return  0;
 
 fail:
-    for(type = 0; type < gf_crtc->plane_cnt; type++)
+    for (type = 0; type < gf_crtc->plane_cnt; type++)
     {
-        if(gf_plane[type])
+        if (gf_plane[type])
         {
             gf_free(gf_plane[type]);
             gf_plane[type] = NULL;
         }
     }
 
-    if(gf_crtc)
+    if (gf_crtc)
     {
         gf_free(gf_crtc);
         gf_crtc = NULL;
@@ -1029,10 +1062,13 @@ int disp_suspend(struct drm_device *dev)
     gf_disp_suspend_helper(dev);
 #endif
 
-    cancel_work_sync(&disp_info->dp_irq_work);
-    cancel_work_sync(&disp_info->hotplug_work);
-    cancel_work_sync(&disp_info->hda_work);
-    cancel_work_sync(&disp_info->hdcp_work);
+    if (!gf_modparams.gf_virtual_display)
+    {
+        cancel_work_sync(&disp_info->dp_irq_work);
+        cancel_work_sync(&disp_info->hotplug_work);
+        cancel_work_sync(&disp_info->hda_work);
+        cancel_work_sync(&disp_info->hdcp_work);
+    }
 
     return ret;
 }
@@ -1347,7 +1383,9 @@ void gf_disp_state_timer_fn(struct timer_list *t)
 void gf_disp_state_timer_fn(unsigned long data)
 #endif
 {
-#if DRM_VERSION_CODE >= KERNEL_VERSION(4, 15, 0)
+#if DRM_VERSION_CODE >= KERNEL_VERSION(6, 16, 0)
+    disp_state_info_t *pstate_info = timer_container_of(pstate_info, t, state_timer);
+#elif DRM_VERSION_CODE >= KERNEL_VERSION(4, 15, 0)
     disp_state_info_t *pstate_info = from_timer(pstate_info, t, state_timer);
 #else
     disp_state_info_t *pstate_info  = (disp_state_info_t  *)data;
@@ -1454,6 +1492,7 @@ int  gf_init_modeset(struct drm_device *dev)
     disp_info->gf_card = gf_card;
     disp_info->adp_info = adapter_info;
     adapter_info->init_render = 1;
+    disp_info->cbios_flags = gf_card->cbios_flags;
 
     gf_core_interface->get_adapter_info(gf_card->adapter, adapter_info);
 
@@ -1583,26 +1622,28 @@ void  gf_deinit_modeset(struct drm_device *dev)
     gf_card->disp_info = NULL;
 }
 
-int gf_debugfs_crtc_dump(struct seq_file* file, struct drm_device* dev, int index)
+int gf_debugfs_crtc_dump(struct seq_file *file, struct drm_device *dev, int index)
 {
-    struct drm_crtc* crtc = NULL;
-    gf_crtc_t*  gf_crtc = NULL;
+    gf_card_t *gf_card = dev->dev_private;
+    disp_info_t *disp_info = (disp_info_t*)gf_card->disp_info;
+    struct drm_crtc *crtc = NULL;
+    gf_crtc_t *gf_crtc = NULL;
     struct drm_display_mode  *mode, *hwmode;
-    struct drm_plane*  plane = NULL;
-    gf_plane_t* gf_plane= NULL;
+    struct drm_plane *plane = NULL;
+    gf_plane_t *gf_plane= NULL;
     struct drm_gf_gem_object *obj = NULL;
-    int enabled, h, v;
+    int enabled, h, v, stream_use;
 
     list_for_each_entry(crtc, &dev->mode_config.crtc_list, head)
     {
-        if(to_gf_crtc(crtc)->pipe == index)
+        if (to_gf_crtc(crtc)->pipe == index)
         {
             gf_crtc = to_gf_crtc(crtc);
             break;
         }
     }
 
-    if(!gf_crtc)
+    if (!gf_crtc)
     {
         return 0;
     }
@@ -1617,7 +1658,7 @@ int gf_debugfs_crtc_dump(struct seq_file* file, struct drm_device* dev, int inde
     enabled = (crtc->state->enable && crtc->state->mode_blob);
 #endif
 
-    if(!enabled)
+    if (!enabled)
     {
         seq_printf(file, "IGA status: disabled.\n");
         return 0;
@@ -1647,7 +1688,7 @@ int gf_debugfs_crtc_dump(struct seq_file* file, struct drm_device* dev, int inde
 #else
     obj = (crtc->fb)? to_gfb(crtc->fb)->obj : NULL;
 #endif
-    seq_printf(file, "IGA%d-PS: src window: [%d, %d, %d, %d], dst window: [0, 0, %d, %d], handle: 0x%x, gpu vt addr: 0x%llx.\n",
+    seq_printf(file, "IGA%d-PS-Stream0: src window: [%d, %d, %d, %d], dst window: [0, 0, %d, %d], handle: 0x%x, gpu vt addr: 0x%llx.\n",
                       (gf_crtc->pipe+1), crtc->x, crtc->y, crtc->x+h, crtc->y + v, h, v, obj->info.allocation, obj->info.gpu_virt_addr);
     //overlay
 #if DRM_VERSION_CODE >= KERNEL_VERSION(4, 3, 0)
@@ -1659,14 +1700,15 @@ int gf_debugfs_crtc_dump(struct seq_file* file, struct drm_device* dev, int inde
 #endif
     {
         gf_plane = to_gf_plane(plane);
-        if(gf_plane->crtc_index != gf_crtc->pipe)
+        if (gf_plane->crtc_index != gf_crtc->pipe)
         {
             continue;
         }
 
-        if(!plane->crtc || !plane->fb)
+        stream_use = disp_get_input_stream(disp_info, gf_plane->plane_type);
+        if (!plane->crtc || !plane->fb)
         {
-            seq_printf(file, "IGA%d-%s: disabled.\n", (gf_crtc->pipe+1), plane_name[gf_plane->plane_type]);
+            seq_printf(file, "IGA%d-%s-%s: disabled.\n", (gf_crtc->pipe+1), plane_name[gf_plane->plane_type], stream_name[stream_use]);
         }
         else
         {
@@ -1679,13 +1721,14 @@ int gf_debugfs_crtc_dump(struct seq_file* file, struct drm_device* dev, int inde
             int dst_w = gf_plane->dst_size & 0xFFFF;
             int dst_h = (gf_plane->dst_size >> 16) & 0xFFFF;
             obj = to_gfb(plane->fb)->obj;
-            seq_printf(file, "IGA%d-%s: src window: [%d, %d, %d, %d], dst window: [%d, %d, %d, %d], handle: 0x%x, gpu vt addr: 0x%llx.\n",
-                      (gf_crtc->pipe+1), plane_name[gf_plane->plane_type], src_x, src_y, src_x + src_w, src_y + src_h,
-                      dst_x, dst_y, dst_x + dst_w, dst_y + dst_h, obj->info.allocation, obj->info.gpu_virt_addr);
+            seq_printf(file, "IGA%d-%s-%s: src window: [%d, %d, %d, %d], dst window: [%d, %d, %d, %d], handle: 0x%x, gpu vt addr: 0x%llx.\n",
+                       (gf_crtc->pipe+1), plane_name[gf_plane->plane_type], stream_name[stream_use], src_x, src_y, src_x + src_w,
+                       src_y + src_h, dst_x, dst_y, dst_x + dst_w, dst_y + dst_h, obj->info.allocation, obj->info.gpu_virt_addr);
         }
     }
+
     //cursor
-    if(!gf_crtc->cursor_bo)
+    if (!gf_crtc->cursor_bo)
     {
         seq_printf(file, "IGA%d-cursor: disabled.\n", (gf_crtc->pipe+1));
     }
@@ -1700,12 +1743,12 @@ int gf_debugfs_crtc_dump(struct seq_file* file, struct drm_device* dev, int inde
     list_for_each_entry(plane, &dev->mode_config.plane_list, head)
     {
         gf_plane = to_gf_plane(plane);
-        if(gf_plane->crtc_index != gf_crtc->pipe)
+        if (gf_plane->crtc_index != gf_crtc->pipe)
         {
             continue;
         }
 
-        if(!gf_plane->base_plane.state->crtc || ! gf_plane->base_plane.state->fb)
+        if (!gf_plane->base_plane.state->crtc || ! gf_plane->base_plane.state->fb)
         {
             seq_printf(file, "%s: disabled.\n", gf_plane->base_plane.name);
         }
@@ -1720,9 +1763,20 @@ int gf_debugfs_crtc_dump(struct seq_file* file, struct drm_device* dev, int inde
             int dst_w = gf_plane->base_plane.state->crtc_w;
             int dst_h = gf_plane->base_plane.state->crtc_h;
             obj = to_gfb(gf_plane->base_plane.state->fb)->obj;
-            seq_printf(file, "%s: src window: [%d, %d, %d, %d], dst window: [%d, %d, %d, %d], handle: 0x%x, gpu vt addr: 0x%llx.\n",
-                      gf_plane->base_plane.name, src_x, src_y, src_x + src_w, src_y + src_h,
-                      dst_x, dst_y, dst_x + dst_w, dst_y + dst_h, obj->info.allocation, obj->info.gpu_virt_addr);
+
+            if (GF_PLANE_CURSOR == gf_plane->plane_type)
+            {
+                seq_printf(file, "%s: src window: [%d, %d, %d, %d], dst window: [%d, %d, %d, %d], handle: 0x%x, gpu vt addr: 0x%llx.\n",
+                           gf_plane->base_plane.name, src_x, src_y, src_x + src_w, src_y + src_h,
+                           dst_x, dst_y, dst_x + dst_w, dst_y + dst_h, obj->info.allocation, obj->info.gpu_virt_addr);
+            }
+            else
+            {
+                stream_use = disp_get_input_stream(disp_info, gf_plane->plane_type);
+                seq_printf(file, "%s-%s: src window: [%d, %d, %d, %d], dst window: [%d, %d, %d, %d], handle: 0x%x, gpu vt addr: 0x%llx.\n",
+                           gf_plane->base_plane.name, stream_name[stream_use], src_x, src_y, src_x + src_w, src_y + src_h,
+                           dst_x, dst_y, dst_x + dst_w, dst_y + dst_h, obj->info.allocation, obj->info.gpu_virt_addr);
+            }
         }
     }
 #endif
@@ -2096,3 +2150,115 @@ void gf_release_display(disp_info_t *disp_info, unsigned int ref_type)
     }
 }
 
+#define GF_FLASH_TOTAL_SIZE 0x100000 // total 1MB
+#define GF_FLASH_START_ADDR 0xb0000 // 700KB reserved for firmware
+#define GF_FLASH_CACHE_SIZE 0x1000  // 4KB cached
+
+int disp_flash_operation(disp_info_t *disp_info, gf_flash_param_t *flash_param)
+{
+    int ret = 0;
+    adapter_info_t *adp_info = disp_info->adp_info;
+
+    if (adp_info->run_on_qt)
+    {
+        ret = -EINVAL;
+        goto out;
+    }
+
+    switch (flash_param->op)
+    {
+    case GF_FLASH_GET_START_ADDR:
+        flash_param->addr = GF_FLASH_START_ADDR;
+        break;
+    case GF_FLASH_GET_MAX_SIZE:
+        flash_param->size = GF_FLASH_TOTAL_SIZE - GF_FLASH_START_ADDR;
+        break;
+    case GF_FLASH_READ:
+        if (flash_param->addr < GF_FLASH_START_ADDR || flash_param->addr + flash_param->size > GF_FLASH_TOTAL_SIZE)
+        {
+            ret = -EINVAL;
+            goto out;
+        }
+
+        gf_mutex_lock(disp_info->flash_mutex);
+        if (flash_param->addr + flash_param->size <= GF_FLASH_START_ADDR + GF_FLASH_CACHE_SIZE)
+        {
+            if (!disp_info->flash_cache_is_valid)
+            {
+                if (!disp_info->flash_cache)
+                {
+                    disp_info->flash_cache = gf_malloc(GF_FLASH_CACHE_SIZE);
+                    if (!disp_info->flash_cache)
+                    {
+                        gf_info("%s: out of memory\n", __func__);
+                        ret = -ENOMEM;
+                        gf_mutex_unlock(disp_info->flash_mutex);
+                        goto out;
+                    }
+                }
+
+                if (disp_cbios_flash_read(disp_info, GF_FLASH_START_ADDR, GF_FLASH_CACHE_SIZE, disp_info->flash_cache) != DISP_OK)
+                {
+                    ret = -EIO;
+                    gf_mutex_unlock(disp_info->flash_mutex);
+                    goto out;
+                }
+
+                disp_info->flash_cache_is_valid = TRUE;
+            }
+
+            ret = gf_copy_to_user(ptr64_to_ptr(flash_param->buf), disp_info->flash_cache + flash_param->addr - GF_FLASH_START_ADDR, flash_param->size);
+        }
+        else
+        {
+            void *kbuf = gf_malloc(flash_param->size);
+            if (disp_cbios_flash_read(disp_info, flash_param->addr, flash_param->size, kbuf) == DISP_OK)
+            {
+                ret = gf_copy_to_user(ptr64_to_ptr(flash_param->buf), kbuf, flash_param->size);
+            } else {
+                ret = -EIO;
+            }
+            gf_free(kbuf);
+        }
+        gf_mutex_unlock(disp_info->flash_mutex);
+        break;
+    case GF_FLASH_WRITE:
+        if (!capable(CAP_SYS_ADMIN))
+        {
+            ret = -EACCES;
+        }
+        else if (flash_param->addr < GF_FLASH_START_ADDR || flash_param->addr + flash_param->size > GF_FLASH_TOTAL_SIZE)
+        {
+            ret = -EINVAL;
+        }
+        else
+        {
+            void *kbuf = gf_malloc(flash_param->size);
+
+            gf_mutex_lock(disp_info->flash_mutex);
+            ret = gf_copy_from_user(kbuf, ptr64_to_ptr(flash_param->buf), flash_param->size);
+            if (ret == 0)
+            {
+                if (disp_cbios_flash_write(disp_info, flash_param->addr, flash_param->size, kbuf) != DISP_OK)
+                {
+                    ret = -EIO;
+                }
+            }
+            gf_free(kbuf);
+
+            if (flash_param->addr <= GF_FLASH_START_ADDR + GF_FLASH_CACHE_SIZE)
+            {
+                disp_info->flash_cache_is_valid = FALSE;
+            }
+            gf_mutex_unlock(disp_info->flash_mutex);
+        }
+
+        break;
+    default:
+        ret = -EINVAL;
+        break;
+    }
+
+out:
+    return ret;
+}

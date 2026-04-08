@@ -105,6 +105,7 @@ PCBIOS_DEVICE_COMMON cbCRTPort_Init(PCBIOS_VOID pvcbe, PVCP_INFO pVCP, CBIOS_ACT
 
     pDeviceCommon = &pCrtContext->Common;
     pDeviceCommon->DeviceType = DeviceType;
+    pDeviceCommon->PortConnType = pVCP->VGA_CONN_TYPE;
     pDeviceCommon->SupportMonitorType = cbGetSupportMonitorType(pcbe, DeviceType);
     pDeviceCommon->I2CBus = pVCP->CRTCharByte & I2CBUSMASK;
     pDeviceCommon->HPDPin = pVCP->CRTInterruptPort & HPDPORT_MASK;

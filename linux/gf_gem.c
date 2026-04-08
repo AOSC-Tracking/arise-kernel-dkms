@@ -1470,8 +1470,6 @@ int gf_drm_gem_mmap(struct file *filp, struct vm_area_struct *vma)
     vm_flags_clear(vma, (VM_IO | VM_PFNMAP | VM_DONTEXPAND | VM_DONTDUMP));
 #endif
 
-    vma->vm_page_prot = pgprot_writecombine(vm_get_page_prot(vma->vm_flags));
-
     gf_drm_gem_object_vm_prepare(obj);
 
     return gf_drm_gem_object_mmap(filp, obj, vma);
@@ -1533,9 +1531,7 @@ static vm_fault_t gf_gem_io_insert(struct vm_area_struct *vma, unsigned long add
         pfn = (map->phys_addr + offset) >> PAGE_SHIFT;
 
         retval = vmf_insert_pfn(vma, address, pfn);
-        if (unlikely((retval == VM_FAULT_NOPAGE && i > 0)))
-            break;
-        else if (unlikely(retval & VM_FAULT_ERROR))
+        if (unlikely(retval & VM_FAULT_ERROR))
         {
             return retval;
         }
@@ -1549,26 +1545,46 @@ static vm_fault_t gf_gem_io_insert(struct vm_area_struct *vma, unsigned long add
 
 static vm_fault_t gf_gem_ram_insert(struct vm_area_struct *vma, unsigned long address, gf_map_argu_t *map, unsigned int offset, unsigned int prefault_num)
 {
-    unsigned long pfn;
+    unsigned long pfn, fault_address;
     vm_fault_t retval = VM_FAULT_NOPAGE;
-    int i, start_page, end_page;
+    int i, start_page, end_page, fault_page;
 
     start_page = _ALIGN_DOWN(offset, PAGE_SIZE) / PAGE_SIZE;
-    end_page = min((int)(start_page+prefault_num), (int)(map->memory->size / PAGE_SIZE));
+    end_page = min((int)(start_page + prefault_num), (int)(map->memory->size / PAGE_SIZE));
+
+    fault_address = address;
+    fault_page = start_page;
+
+    if (start_page >= prefault_num)
+    {
+        address -= prefault_num * PAGE_SIZE;
+        start_page -= prefault_num;
+    }
+    else
+    {
+        address -= start_page * PAGE_SIZE;
+        start_page = 0;
+    }
+
     map->flags.cache_type = gf_validate_page_cache(map->memory, start_page, end_page, map->flags.cache_type);
 
     for (i = start_page; i < end_page; i++)
     {
         pfn  = page_to_pfn(map->memory->pages[i]);
         retval = vmf_insert_pfn(vma, address, pfn);
-        if (unlikely((retval == VM_FAULT_NOPAGE && i > start_page)))
-            break;
-        else if (unlikely(retval & VM_FAULT_ERROR))
+        if (unlikely(retval & VM_FAULT_ERROR))
         {
-            return retval;
+            break;
         }
         address += PAGE_SIZE;
     }
+
+    if (i < fault_page)
+    {
+        pfn = page_to_pfn(map->memory->pages[fault_page]);
+        retval = vmf_insert_pfn(vma, fault_address, pfn);
+    }
+
     return retval;
 }
 

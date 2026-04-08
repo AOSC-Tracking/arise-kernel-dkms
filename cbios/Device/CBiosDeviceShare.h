@@ -55,7 +55,7 @@ typedef CBIOS_VOID
 typedef struct _CBIOS_DEVICE_SIGNATURE
 {
     CBIOS_U8 MonitorID[MONITORIDLENGTH];
-    CBIOS_U8 ExtFlagChecksum[CBIOS_EDIDMAXBLOCKCOUNT][EXTFLAGCHECKSUMLENTH];
+    CBIOS_U8 ExtFlagChecksum[CBIOS_EDID_MAX_BLK_CNT][EXTFLAGCHECKSUMLENTH];
 }CBIOS_DEVICE_SIGNATURE, *PCBIOS_DEVICE_SIGNATURE;
 
 typedef struct _CBIOS_DEVICE_COMMON
@@ -64,6 +64,7 @@ typedef struct _CBIOS_DEVICE_COMMON
     struct
     {
         CBIOS_ACTIVE_TYPE           DeviceType;
+        CBIOS_CONNECTOR_TYPE        PortConnType;
         CBIOS_MONITOR_TYPE          SupportMonitorType;
         CBIOS_U32                   I2CBus; // real I2C bus used to read EDID from monitor
         CBIOS_U8                    HPDPin;

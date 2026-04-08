@@ -44,7 +44,6 @@
 #define CBIOS_DTLMODECOUNT               4
 #define CBIOS_DTDTIMINGCOUNTS            6
 #define MAX_SVD_COUNT                    31
-#define MAX_EDID_BLOCK_NUM               8
 #define MAX_HDMI_VIC_LEN                 7
 #define MAX_HDMI_3D_LEN                  31
 #define MAX_HDMI_3D_AUDIO_DESC_NUM       8
@@ -54,11 +53,12 @@
 #define CBIOS_HDMIFORMATCOUNTS           CBIOS_HDMI_NORMAL_VIC_COUNTS + CBIOS_HDMI_EXTENED_VIC_COUNTS
 #define CBIOS_HDMI_AUDIO_FORMAT_COUNTS   16
 #define CBIOS_DISPLAYID_TYPE1_MODECOUNT  6
+#define DMT_TIMING_COUNT                 0x58
 
 /* For support multiple segment EDID data */
-/* Current we only support at most 4 segments */
-#define CBIOS_EDIDSEGMENTCOUNT           4
-#define CBIOS_EDIDMAXBLOCKCOUNT          (CBIOS_EDIDSEGMENTCOUNT * 2)
+/* Current we only support at most 8 segments */
+#define CBIOS_EDIDSEGMENTCOUNT           8
+#define CBIOS_EDID_MAX_BLK_CNT           (CBIOS_EDIDSEGMENTCOUNT * 2)
 #define CBIOS_EDIDDATABYTE               (256*CBIOS_EDIDSEGMENTCOUNT)
 #define EDID_BLOCK_SIZE_SPEC             128      /* 128 bytes per EDID spec */
 
@@ -132,6 +132,21 @@ typedef enum _CBIOS_DISPLAYID_BLOCK_TAG
     VIDEO_TIMING_MODES_DATA_BLOCK_TYPE5_TAG,
     TILED_DISPLAY_TOPOLOGY_DATA_BLOCK_TAG,
     VIDEO_TIMING_MODES_DATA_BLOCK_TYPE6_TAG,
+    PRODUCT_IDENTIFICATION_DATA_BLOCK2_TAG = 0x20,
+    DISPLAY_PARAMETERS_DATA_BLOCK2_TAG,
+    VIDEO_TIMING_MODES_DATA_BLOCK2_TYPE7_TAG,
+    VIDEO_TIMING_MODES_DATA_BLOCK2_TYPE8_TAG,
+    VIDEO_TIMING_MODES_DATA_BLOCK2_TYPE9_TAG,
+    DYNAMIC_VIDEO_TIMING_RANGE_LIMITS_DATA_BLOCK2_TAG,
+    DISPLAY_INTERFACE_FEATURES_DATA_BLOCK2_TAG,
+    STEREO_DISPLAY_INTERFACE_DATA_BLOCK2_TAG,
+    TILED_DISPLAY_TOPOLOGY_DATA_BLOCK2_TAG,
+    CONTAINERID_DATA_BLOCK2_TAG,
+    VIDEO_TIMING_MODES_DATA_BLOCK2_TYPE10_TAG,
+    ADAPTIVESYNC_DATA_BLOCK2_TAG,
+    ARVR_HMD_DATA_BLOCK2_TAG,
+    ARVR_LAYER_DATA_BLOCK2_TAG,
+    BRIGHTNESS_LUMINANCE_RANGE_DATA_BLOCK2_TAG,
     DISPLAYID_VENDOR_SPECIFIC_DATA_BLOCK_TAG = 0x7F,
 }CBIOS_DISPLAYID_BLOCK_TAG;
 
@@ -169,12 +184,21 @@ typedef struct _CBIOS_HDMI_FORMAT_DESCRIPTOR
     };
     struct
     {
-        CBIOS_U8    IsSupportYCbCr420       :1;
-        CBIOS_U8    IsSupportOtherFormats   :1; /* RGB, YCbCr4:4:4, YCbCr4:2:2 */
-        CBIOS_U8    RsvdBits                :6;
+        CBIOS_U8    IsSupportYCbCr420    :1;
+        CBIOS_U8    IsOnlyY420Support    :1; /*not support RGB, YCbCr4:4:4, YCbCr4:2:2 */
+        CBIOS_U8    RsvdBits             :6;
     };
     CBIOS_U8 SVDIndexInVideoBlock;
 }CBIOS_HDMI_FORMAT_DESCRIPTOR, *PCBIOS_HDMI_FORMAT_DESCRIPTOR;
+
+typedef struct _CBIOS_DMT_FORMAT_ATTRIB
+{
+    CBIOS_U8    IsSupported          :1;
+    CBIOS_U8    IsInterlaced         :1;
+    CBIOS_U8    IsSupportYCbCr420    :1;
+    CBIOS_U8    IsSupportStereo      :1;
+    CBIOS_U8    RsvdBits             :4;
+}CBIOS_DMT_FORMAT_ATTRIB, *PCBIOS_DMT_FORMAT_ATTRIB;
 
 typedef struct _CBIOS_HDMI_3D_FORMAT
 {
@@ -349,8 +373,8 @@ typedef struct _CBIOS_VIDEO_CAPABILITY_DATA
         CBIOS_U8        CEScanInfo          :2;
         CBIOS_U8        ITScanInfo          :2;
         CBIOS_U8        PTScanInfo          :2;
-        CBIOS_U8        bYCCQuantRange      :1;
         CBIOS_U8        bRGBQuantRange      :1;
+        CBIOS_U8        bYCCQuantRange      :1;
     };
 }CBIOS_VIDEO_CAPABILITY_DATA, *PCBIOS_VIDEO_CAPABILITY_DATA;
 
@@ -460,10 +484,13 @@ typedef struct _CBIOS_SVR_DESC
 
 typedef struct _CBIOS_FAKE_EDID_PARAMS
 {
-    CBIOS_MODE_INFO_EXT DtlTiming;
+    CBIOS_DETAILED_TIMING_INFO DtlTiming;
     CBIOS_BOOL          bProvideDtlTimingEDID;
     CBIOS_U8            DtlTimingEDID[16];
 }CBIOS_FAKE_EDID_PARAMS, *PCBIOS_FAKE_EDID_PARAMS;
+
+// for filter invalid timing
+#define CBIOS_MIN_PIXEL_CLK 200000
 
 typedef struct _CBIOS_MONITOR_MISC_ATTRIB
 {
@@ -488,13 +515,14 @@ typedef struct _CBIOS_MONITOR_MISC_ATTRIB
     CBIOS_U8                        OffsetOfDetailedTimingBlock;
     CBIOS_HDMI_VSDB_EXTENTION       VSDBData;
     CBIOS_HF_SCDS_DATA              HFSCDSData;
-    CBIOS_CEA_SVD_DATA              SVDData[CBIOS_EDIDMAXBLOCKCOUNT - 1];
+    CBIOS_CEA_SVD_DATA              SVDData[CBIOS_EDID_MAX_BLK_CNT - 1];
     CBIOS_CEA_EXTENED_BLOCK         ExtDataBlock[MAX_CEA_EXT_DATA_BLOCK_NUM];
     CBIOS_BOOL                      bStereoViewSupport;    // stereo Viewing Support for row-interlace
     CBIOS_STEREO_VIEW               StereoViewType;        // stereo view type
     CBIOS_U8                        ManufactureName[2];
     CBIOS_U8                        ProductCode[2];
     CBIOS_U8                        MonitorName[16];
+    CBIOS_UCHAR                     MonitorID[8];
     CBIOS_U8                        SAD_Count;             // at most 15 SADs
     CBIOS_U8                        CEA_SADs[15][3];
     CBIOS_U8                        SpeakerAllocationData;
@@ -511,14 +539,27 @@ typedef struct _CBIOS_EDID_STRUCTURE_DATA {
     CBIOS_U8          Version;
     CBIOS_MODE_INFO EstTimings[CBIOS_ESTABLISHMODECOUNT];
     CBIOS_MODE_INFO StdTimings[CBIOS_STDMODECOUNT];
-    CBIOS_MODE_INFO_EXT DtlTimings[CBIOS_DTLMODECOUNT];
+    CBIOS_DETAILED_TIMING_INFO DtlTimings[CBIOS_DTLMODECOUNT];
     CBIOS_MONITOR_MISC_ATTRIB Attribute;
     CBIOS_HDMI_FORMAT_DESCRIPTOR HDMIFormat[CBIOS_HDMIFORMATCOUNTS];
     CBIOS_HDMI_AUDIO_INFO HDMIAudioFormat[CBIOS_HDMI_AUDIO_FORMAT_COUNTS];
-    CBIOS_MODE_INFO_EXT DTDTimings[CBIOS_DTDTIMING_BLOCK_CNT]; //may meet two CEA data block(edid has 4 block)
+    CBIOS_DETAILED_TIMING_INFO DTDTimings[CBIOS_DTDTIMING_BLOCK_CNT]; //may meet two CEA data block(edid has 4 block)
     CBIOS_U32         TotalModeNum;    // total number of modes that supported in EDID
     CBIOS_U32         TotalHDMIAudioFormatNum; // total number of hdmi audio formats that supported in EDID
-    CBIOS_MODE_INFO_EXT DisplayID_TYPE1_Timings[CBIOS_DISPLAYID_TYPE1_MODECOUNT];
+    PCBIOS_DETAILED_TIMING_INFO  DisplayID_Dtl_Timings;
+    CBIOS_U32         DisplayID_Dtl_ModeCnt;
+    CBIOS_U32         DisplayID_ArrayCapacity;
+    CBIOS_DMT_FORMAT_ATTRIB DmtTimings[DMT_TIMING_COUNT];
+    union
+    {
+        struct
+        {
+            CBIOS_U8    IsSupportCeaFormat  :1;
+            CBIOS_U8    IsSupportDmtFormat  :1;
+            CBIOS_U8    ReservedSVDFormat   :6;
+        };
+        CBIOS_U8          ShortVideoDescriptorSupport;
+    };
 } CBIOS_EDID_STRUCTURE_DATA, *PCBIOS_EDID_STRUCTURE_DATA;
 
 CBIOS_U32 cbEDIDModule_GetExtBlockNum(CBIOS_U8 *pEDID);
@@ -534,7 +575,7 @@ CBIOS_VOID cbEDIDModule_SADPatch(PCBIOS_EDID_STRUCTURE_DATA pEDIDStruct);
 CBIOS_BOOL cbEDIDModule_SearchTmInEdidStruct(CBIOS_U32 XResolution,
                                              CBIOS_U32 YResolution,
                                              CBIOS_U32 RefreshRate,
-                                             CBIOS_U32 InterlaceFlag,
+                                             CBIOS_QUERY_MODE_FLAGS Flags,
                                              PCBIOS_EDID_STRUCTURE_DATA pEDIDStruct,
                                              PCBIOS_U32 pTmBlock,
                                              PCBIOS_U32 pTmIndex);

@@ -26,9 +26,14 @@
 
 #include "gf.h"
 #include "gf_kms.h"
+#include "gf_vkms.h"
 #include "gf_driver.h"
 #if DRM_VERSION_CODE >= KERNEL_VERSION(6, 0, 0)
 #include <drm/drm_blend.h>
+#endif
+
+#if defined(CONFIG_DRM_PANIC)
+#include <drm/drm_panic.h>
 #endif
 
 /* same to  CBIOS_REGISTER_TYPE */
@@ -155,6 +160,11 @@ enum
 
 #define ENABLE_HDMI4_VGA_ON_IGA4 1
 
+#define DISP_TS_AT_LAYER0  1
+
+#define GF_PLANE_CURSOR GF_MAX_PLANE
+#define GF_STREAM_INVALID (GF_STREAM_MAX + 1)
+
 typedef enum
 {
     DISP_OUTPUT_NONE = 0x00,
@@ -233,6 +243,7 @@ typedef struct
 {
     void            *rom_image;
     void            *cbios_ext;
+    unsigned int    cbios_flags;
     struct os_spinlock *cbios_inner_spin_lock;
     struct os_mutex *cbios_aux_mutex;
     struct os_mutex *cbios_i2c_mutex[MAX_I2CBUS];
@@ -246,6 +257,7 @@ typedef struct
     unsigned int     scale_support;  //support panel up scale
     unsigned int     up_scale_plane_mask[MAX_CORE_CRTCS]; //stream mask for each crtc
     unsigned int     down_scale_plane_mask[MAX_CORE_CRTCS];
+    unsigned int     szw_customer;
 
     unsigned int     support_output;
     unsigned int     output_id_masks;
@@ -261,8 +273,8 @@ typedef struct
     unsigned int     hda_intr_outputs;
     unsigned int     hdcp_intr_outputs;
 #ifdef ENABLE_HDMI4_VGA_ON_IGA4
-        disp_output_type   conflict_high;
-        disp_output_type   conflict_low;
+    disp_output_type   conflict_high;
+    disp_output_type   conflict_low;
 #endif
     struct os_spinlock *intr_lock;
     struct os_spinlock *hpd_lock;
@@ -312,11 +324,21 @@ typedef struct
     struct drm_property *crtc_h_prop;
 #endif
 
+    struct drm_property *prefer_signal_prop;
+
 #if LINUX_VERSION_CODE <= KERNEL_VERSION(2, 6, 35)
     struct workqueue_struct *wq;
 #endif
 
-   disp_state_info_t *state_info;
+    disp_state_info_t *state_info;
+
+    gf_vkms_output_t *vkms_output;
+
+    /* cache the first page of flash data for umd, to avoid always read from hardware */
+    unsigned char *flash_cache;
+    int flash_cache_is_valid;
+    struct os_mutex *flash_mutex;
+    unsigned int features;
 }disp_info_t;
 
 static __inline__ unsigned char read_reg_exc(unsigned char *mmio, int type, unsigned char index)
@@ -395,6 +417,44 @@ static __inline__ void write_reg_exc(unsigned char *mmio, int type, unsigned cha
     gf_write8(mmio + offset, temp);
 }
 
+static __inline__ GF_STREAM_TYPE disp_get_input_stream(disp_info_t *disp_info, GF_PLANE_TYPE plane_type)
+{
+    GF_STREAM_TYPE stream_type = GF_STREAM_INVALID;
+
+    switch (plane_type)
+    {
+    case GF_PLANE_PS:
+#if defined(DISP_TS_AT_LAYER0) && DRM_VERSION_CODE >= KERNEL_VERSION(4, 8, 0)
+        stream_type = GF_STREAM_TS;
+#else
+        stream_type = GF_STREAM_PS;
+#endif
+        break;
+
+    case GF_PLANE_SS:
+        stream_type = GF_STREAM_SS;
+        break;
+
+    case GF_PLANE_TS:
+#if defined(DISP_TS_AT_LAYER0) && DRM_VERSION_CODE >= KERNEL_VERSION(4, 8, 0)
+        stream_type = GF_STREAM_PS;
+#else
+        stream_type = GF_STREAM_TS;
+#endif
+        break;
+
+    case GF_PLANE_FS:
+        stream_type = GF_STREAM_4S;
+        break;
+
+    default:
+        gf_error("plane %d is not supported!\n", plane_type);
+        break;
+    }
+
+    return stream_type;
+}
+
 void  disp_irq_init(disp_info_t* disp_info);
 void  disp_irq_deinit(disp_info_t* disp_info);
 void disp_irq_install(disp_info_t* disp_info);
@@ -416,7 +476,7 @@ void gf_encoder_disable(struct drm_encoder *encoder);
 void gf_encoder_enable(struct drm_encoder *encoder);
 
 bool gf_encoder_mode_fixup_internal(disp_info_t*  disp_info, int output_type,
-         const struct drm_display_mode *mode, struct drm_display_mode *adjusted_mode);
+         const struct drm_display_mode *mode, struct drm_display_mode *adjusted_mode, OUTPUT_SIGNAL *output_signal);
 
 int disp_cbios_get_clock(disp_info_t *disp_info, unsigned int type, unsigned int *output);
 
@@ -436,5 +496,7 @@ gf_connector_t* gf_get_connector_by_device_id(disp_info_t *disp_info, int device
 
 void gf_acquire_display(disp_info_t *disp_info, unsigned int ref_type);
 void gf_release_display(disp_info_t *disp_info, unsigned int ref_type);
+
+int disp_flash_operation(disp_info_t *disp_info, gf_flash_param_t *flash_param);
 
 #endif

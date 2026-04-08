@@ -284,6 +284,8 @@ int gf_enable_vblank(struct drm_device *dev, pipe_t pipe)
 #if DRM_VERSION_CODE >= KERNEL_VERSION(5, 7, 0)
     struct drm_device *dev = crtc->dev;
     unsigned int pipe = crtc->index;
+#else
+    struct drm_crtc *crtc = gf_get_crtc_by_pipe(dev, pipe);
 #endif
 
     gf_card_t*  gf_card = dev->dev_private;
@@ -291,6 +293,12 @@ int gf_enable_vblank(struct drm_device *dev, pipe_t pipe)
     irq_chip_funcs_t* chip_func = (irq_chip_funcs_t*)disp_info->irq_chip_func;
     int  intrrpt = 0, intr_en = 0;
     unsigned long flags = 0;
+
+    if (!crtc->enabled)
+    {
+        DRM_DEBUG_KMS("crtc %d: enable vblank on unconfigured crtc!!.\n", pipe);
+        return -EINVAL;
+    }
 
 #if DRM_VERSION_CODE < KERNEL_VERSION(5, 7, 0)
     if (is_splice_target_crtc(dev, pipe))
@@ -697,11 +705,10 @@ static void  gf_hpd_handle(struct drm_device* dev, unsigned int hpd)
                 {
                     hpd_happen = 1;
                     disp_info->hpd_outputs |= gf_connector->output_type;
-#if GF_RUN_HDCP_CTS
-                    disp_cbios_enable_hdcp(disp_info, FALSE, gf_connector->output_type);
-                    gf_connector->hdcp_enable = 0;
-                    gf_connector->hpd_out = 1;
-#endif
+                    if (disp_info->cbios_flags & (GF_RUN_HDCP_CTS | GF_RUN_DP_CTS))
+                    {
+                        gf_connector->hpd_out = 1;
+                    }
                 }
                 else if(dp_int == DP_HPD_IRQ || dp_int == DP_HPD_IN)
                 {
@@ -728,14 +735,19 @@ static void  gf_hpd_handle(struct drm_device* dev, unsigned int hpd)
 
     gf_spin_unlock_irqrestore(disp_info->hpd_lock, flags);
 
-    if(queue_irq_work)
+    if (queue_irq_work)
     {
         schedule_work(&disp_info->dp_irq_work);
     }
 
-    if(hpd_happen)
+    if (hpd_happen)
     {
+
+    #if DRM_VERSION_CODE >= KERNEL_VERSION(6, 5, 0)
+        queue_work(system_unbound_wq, &disp_info->hotplug_work);
+    #else
         schedule_work(&disp_info->hotplug_work);
+    #endif
     }
 }
 
@@ -1128,7 +1140,7 @@ void gf_dp_irq_work_func(struct work_struct *work)
         }
     }
 
-    if(detect_devices)
+    if (detect_devices)
     {
         irq = gf_spin_lock_irqsave(disp_info->hpd_lock);
 
@@ -1136,12 +1148,17 @@ void gf_dp_irq_work_func(struct work_struct *work)
         disp_info->compare_edid_outputs |= comp_edid_devs;
 
         gf_spin_unlock_irqrestore(disp_info->hpd_lock, irq);
+        if (disp_info->cbios_flags & GF_RUN_HDCP_CTS)
+        {
+            //here we add some delay to make sure plug out is report to OS
+            gf_msleep(2000);
+        }
 
-#if GF_RUN_HDCP_CTS
-        //here we add some delay to make sure plug out is report to OS
-        gf_msleep(2000);
-#endif
+    #if DRM_VERSION_CODE >= KERNEL_VERSION(6, 5, 0)
+        queue_work(system_unbound_wq, &disp_info->hotplug_work);
+    #else
         schedule_work(&disp_info->hotplug_work);
+    #endif
     }
 }
 
@@ -1188,7 +1205,11 @@ static void gf_poll_enable_locked(struct drm_device *dev)
 
     if (poll)
     {
+    #if DRM_VERSION_CODE >= KERNEL_VERSION(6, 5, 0)
+        queue_delayed_work(system_unbound_wq, &dev->mode_config.output_poll_work, OUTPUT_POLL_PERIOD);
+    #else
         schedule_delayed_work(&dev->mode_config.output_poll_work, OUTPUT_POLL_PERIOD);
+    #endif
     }
 }
 
@@ -1640,7 +1661,11 @@ out:
 
     if (repoll)
     {
+    #if DRM_VERSION_CODE >= KERNEL_VERSION(6, 5, 0)
+        queue_delayed_work(system_unbound_wq, delayed_work, OUTPUT_POLL_PERIOD);
+    #else
         schedule_delayed_work(delayed_work, OUTPUT_POLL_PERIOD);
+    #endif
     }
 }
 

@@ -119,7 +119,8 @@ void  gf_crtc_helper_set_mode(struct drm_crtc *crtc)
     struct drm_crtc_state * crtc_state = crtc->state;
     struct drm_display_mode* mode = &crtc->state->mode;
     struct drm_display_mode* adj_mode = &crtc_state->adjusted_mode;
-    int flag = 0;
+    struct drm_encoder* encoder = NULL;
+    update_mode_flag_t flag = {0};
     struct task_struct *cur_task = current;
      //in atomic set phase, atomic state is updated to state of crtc/encoder/connector,
     //so we can't roll back mode setting, that means all parameter check should be placed in
@@ -135,7 +136,16 @@ void  gf_crtc_helper_set_mode(struct drm_crtc *crtc)
 
     gf_update_active_connector(crtc);
 
-    flag |= UPDATE_CRTC_MODE_FLAG;
+    flag.set_crtc = 1;
+
+    list_for_each_entry(encoder, &drm_dev->mode_config.encoder_list, head)
+    {
+        if(encoder->crtc == crtc)
+        {
+            flag.output_signal = to_gf_encoder(encoder)->output_signal;
+            break;
+        }
+    }
 
     disp_cbios_set_mode(disp_info, drm_crtc_index(crtc), mode, adj_mode, flag);
 }
@@ -345,7 +355,11 @@ static bool gf_need_wait_vblank(struct drm_crtc *crtc, struct drm_crtc_state *ol
         if(old_crtc_state->state->planes[i].ptr)
         {
             plane = old_crtc_state->state->planes[i].ptr;
+#if  DRM_VERSION_CODE < KERNEL_VERSION(6, 19, 0)
             old_plane_state = old_crtc_state->state->planes[i].state;
+#else
+            old_plane_state = old_crtc_state->state->planes[i].state_to_destroy;
+#endif
             if(plane->state->crtc == crtc && crtc->state && (crtc->state->plane_mask & (1 << plane->index)))
             {
                 if(plane->state->fb != old_plane_state->fb)
@@ -986,17 +1000,18 @@ int  gf_crtc_mode_set(struct drm_crtc *crtc, struct drm_display_mode *mode,
                       struct drm_display_mode *adjusted_mode, int x, int y,
                       struct drm_framebuffer *old_fb)
 {
-    struct drm_device* dev = crtc->dev;
-    gf_card_t*  gf_card = dev->dev_private;
-    disp_info_t*  disp_info = (disp_info_t *)gf_card->disp_info;
-    gf_crtc_t* gf_crtc = to_gf_crtc(crtc);
+    struct drm_device *dev = crtc->dev;
+    gf_card_t *gf_card = dev->dev_private;
+    disp_info_t *disp_info = (disp_info_t *)gf_card->disp_info;
+    gf_crtc_t *gf_crtc = to_gf_crtc(crtc);
     gf_crtc_flip_t arg = {0};
-    int flag = UPDATE_CRTC_MODE_FLAG;
+    update_mode_flag_t flag = {0};
 
+    flag.set_crtc = 1;
     disp_cbios_set_mode(disp_info, gf_crtc->pipe, mode, adjusted_mode, flag);
 
     arg.crtc = to_gf_crtc(crtc)->pipe;
-    arg.stream_type = GF_PLANE_PS;
+    arg.plane_type = GF_PLANE_PS;
     arg.fb = drm_get_crtc_primary_fb(crtc);
     arg.crtc_x = 0;
     arg.crtc_y = 0;
@@ -1021,7 +1036,7 @@ int  gf_crtc_mode_set_base(struct drm_crtc *crtc, int x, int y,
     int  ret = 0;
 
     arg.crtc = to_gf_crtc(crtc)->pipe;
-    arg.stream_type = GF_PLANE_PS;
+    arg.plane_type = GF_PLANE_PS;
     arg.fb = drm_get_crtc_primary_fb(crtc);
     arg.crtc_x = 0;
     arg.crtc_y = 0;
@@ -1048,7 +1063,7 @@ struct gf_flip_work
     struct drm_pending_vblank_event *event;
     struct drm_crtc *crtc;
     struct drm_framebuffer *old_fb;
-    int stream_type;
+    int plane_type;
     dma_fence_t *fence;
 };
 
@@ -1074,7 +1089,7 @@ static void gf_crtc_flip_work_func(struct work_struct *w)
     }
 
     arg.crtc = to_gf_crtc(crtc)->pipe;
-    arg.stream_type = work->stream_type;
+    arg.plane_type = work->plane_type;
     arg.fb = &fb->base;
     arg.crtc_x = 0;
     arg.crtc_y = 0;
@@ -1135,7 +1150,7 @@ int gf_crtc_page_flip(struct drm_crtc *crtc, struct drm_framebuffer *fb, struct 
     work->event = event;
     work->crtc = crtc;
     work->old_fb = old_fb;
-    work->stream_type = GF_STREAM_PS;
+    work->plane_type = GF_PLANE_PS;
     ret = drm_crtc_vblank_get(crtc);
     if (ret)
         goto free_work;

@@ -90,18 +90,15 @@ void gf_encoder_disable(struct drm_encoder *encoder)
     if(gf_encoder->enc_dpms != GF_DPMS_OFF)
     {
         if (!(is_crtc_work_in_splice_mode(encoder->crtc) &&
-             is_splice_target_active_in_drm(dev)))
+            is_splice_target_active_in_drm(dev)))
         {
-
             gf_audio_set_connect(gf_connector, 0);
 
-    #if GF_RUN_HDCP_CTS
-            if (gf_connector->hdcp_enable)
+            if ((disp_info->cbios_flags & GF_RUN_HDCP_CTS) && gf_connector->hdcp_enable)
             {
                 disp_cbios_enable_hdcp(disp_info,FALSE, gf_encoder->output_type);
                 gf_connector->hdcp_enable = 0;
             }
-    #endif
 
             if (cur_task)
             {
@@ -173,29 +170,31 @@ void gf_encoder_enable(struct drm_encoder *encoder)
 
         gf_audio_set_connect(gf_connector, 1);
 
-#if GF_RUN_HDCP_CTS
-        if ((!(gf_connector->hdcp_enable))
-            &&(gf_connector->monitor_type == UT_OUTPUT_TYPE_HDMI || gf_connector->monitor_type == UT_OUTPUT_TYPE_DVI))
+        if ((disp_info->cbios_flags & GF_RUN_HDCP_CTS) && (!(gf_connector->hdcp_enable))
+            &&(gf_connector->monitor_type == UT_OUTPUT_TYPE_HDMI || gf_connector->monitor_type == UT_OUTPUT_TYPE_DVI || gf_connector->monitor_type == UT_OUTPUT_TYPE_DP))
         {
-            disp_cbios_enable_hdcp(disp_info, TRUE,  gf_encoder->output_type);
+            disp_cbios_enable_hdcp(disp_info, TRUE,  gf_connector->output_type);
+
             gf_connector->hdcp_enable = 1;
         }
-#endif
 
         gf_capture_handle_event(disp_info, cf_id, GF_CAPTURE_EVENT_SIGNAL_ON);
     }
 }
 
 bool gf_encoder_mode_fixup_internal(disp_info_t*  disp_info,
-                                   int output_type,
-                                   const struct drm_display_mode *mode,
-                                   struct drm_display_mode *adjusted_mode)
+                                    int output_type,
+                                    const struct drm_display_mode *mode,
+                                    struct drm_display_mode *adjusted_mode,
+                                    OUTPUT_SIGNAL *signal)
+
 {
     unsigned int dev_mode_size = 0, dev_real_num = 0, i = 0;
     unsigned int adapter_mode_size = 0, adapter_mode_num = 0;
     void *dev_mode_buf = NULL, *adapter_mode_buf = NULL;
     PCBiosModeInfoExt pcbios_mode = NULL, matched_mode = NULL;
     PCBiosModeInfoExt ppreferred_mode = NULL, pmaxium_mode = NULL;
+    OUTPUT_SIGNAL output_signal = OUTPUT_SIGNAL_RGB;
 
     if (!adjusted_mode)
     {
@@ -214,16 +213,29 @@ bool gf_encoder_mode_fixup_internal(disp_info_t*  disp_info,
         goto End;
     }
 
+    if (signal)
+    {
+        output_signal = *signal;
+    }
+
     dev_real_num = disp_cbios_get_modes(disp_info, output_type, dev_mode_buf, dev_mode_size);
     for (i = 0; i < dev_real_num; i++)
     {
         pcbios_mode = (PCBiosModeInfoExt)dev_mode_buf + i;
         if ((pcbios_mode->XRes == mode->hdisplay) &&
             (pcbios_mode->YRes == mode->vdisplay) &&
-            (pcbios_mode->RefreshRate/100 == drm_mode_vrefresh(mode)) &&
+            (abs(pcbios_mode->RefreshRate - drm_mode_vrefresh(mode) * 100) < 50) &&
             ((mode->flags & DRM_MODE_FLAG_INTERLACE) ? (pcbios_mode->InterlaceProgressiveCaps == 0x02) : (pcbios_mode->InterlaceProgressiveCaps == 0x01)))
         {
-            //sw mode == hw mode
+            //sw mode == hw mode, modify output_signal if the mode not support the format
+            if (output_signal == OUTPUT_SIGNAL_Y420 && !pcbios_mode->isSupportYCbCr420)
+            {
+                output_signal = OUTPUT_SIGNAL_RGB;
+            }
+            else if (output_signal != OUTPUT_SIGNAL_Y420 && pcbios_mode->isOnlyY420Support)
+            {
+                output_signal = OUTPUT_SIGNAL_Y420;
+            }
             goto End;
         }
     }
@@ -233,7 +245,10 @@ bool gf_encoder_mode_fixup_internal(disp_info_t*  disp_info,
         goto End;
     }
 
-    adapter_mode_size = disp_cbios_get_adapter_modes_size(disp_info);
+    if(!disp_info->szw_customer)
+    {
+        adapter_mode_size = disp_cbios_get_adapter_modes_size(disp_info);
+    }
     if (!adapter_mode_size)
     {
         goto End;
@@ -281,6 +296,8 @@ bool gf_encoder_mode_fixup_internal(disp_info_t*  disp_info,
 
     if (matched_mode)
     {
+        // for YCC420_only mode
+        output_signal = (matched_mode->isOnlyY420Support) ? OUTPUT_SIGNAL_Y420 : OUTPUT_SIGNAL_RGB;
         disp_cbios_cbmode_to_drmmode(disp_info, output_type, matched_mode, 0, adjusted_mode);
     }
 
@@ -289,7 +306,7 @@ End:
     adjusted_mode->vrefresh = drm_mode_vrefresh(adjusted_mode);
 #endif
 
-    disp_cbios_get_mode_timing(disp_info, output_type, adjusted_mode);
+    disp_cbios_get_mode_timing(disp_info, output_type, adjusted_mode, (output_signal == OUTPUT_SIGNAL_Y420));
 
     if (dev_mode_buf)
     {
@@ -303,19 +320,24 @@ End:
         adapter_mode_buf = NULL;
     }
 
+    if (signal)
+    {
+        *signal = output_signal;
+    }
+
     return TRUE;
 }
 
 static bool gf_encoder_mode_fixup(struct drm_encoder *encoder,
-                                   const struct drm_display_mode *mode,
-                                   struct drm_display_mode *adjusted_mode)
+                                  const struct drm_display_mode *mode,
+                                  struct drm_display_mode *adjusted_mode)
 {
     struct drm_device* dev = encoder->dev;
     gf_card_t*  gf_card = dev->dev_private;
     disp_info_t*  disp_info = (disp_info_t *)gf_card->disp_info;
     gf_encoder_t *gf_encoder = to_gf_encoder(encoder);
 
-    return gf_encoder_mode_fixup_internal(disp_info, gf_encoder->output_type, mode, adjusted_mode);
+    return gf_encoder_mode_fixup_internal(disp_info, gf_encoder->output_type, mode, adjusted_mode, &gf_encoder->output_signal);
 }
 
 #if  DRM_VERSION_CODE >= KERNEL_VERSION(4, 8, 0)
@@ -330,7 +352,7 @@ void gf_encoder_atomic_mode_set(struct drm_encoder *encoder,
     struct drm_display_mode* mode = &crtc_state->mode;
     struct drm_display_mode* adj_mode = &crtc_state->adjusted_mode;
     struct drm_crtc*  crtc = NULL;
-    int  flag = 0;
+    update_mode_flag_t  flag = {0};
 
     //in atomic set phase, atomic state is updated to state of crtc/encoder/connector,
     //so we can't roll back mode setting, that means all parameter check should be placed in
@@ -346,8 +368,9 @@ void gf_encoder_atomic_mode_set(struct drm_encoder *encoder,
     }
 
     DRM_DEBUG_KMS("encoder=%d,crtc=%d\n", encoder->index, crtc->index);
-    flag |= UPDATE_ENCODER_MODE_FLAG;
+    flag.set_encoder = 1;
 
+    flag.output_signal = to_gf_encoder(encoder)->output_signal;
     disp_cbios_set_mode(disp_info, drm_crtc_index(crtc), mode, adj_mode, flag);
 }
 
@@ -361,14 +384,14 @@ void  gf_encoder_mode_set(struct drm_encoder *encoder,
     struct drm_crtc* crtc = encoder->crtc;
     gf_card_t*  gf_card = dev->dev_private;
     disp_info_t*  disp_info = (disp_info_t *)gf_card->disp_info;
-    int flag = 0;
+    update_mode_flag_t  flag = {0};
 
     if(!crtc)
     {
         gf_assert(0, GF_FUNC_NAME(__func__));
     }
 
-    flag = UPDATE_ENCODER_MODE_FLAG;
+    flag.set_encoder = 1;
 
     disp_cbios_set_mode(disp_info, to_gf_crtc(crtc)->pipe, mode, adjusted_mode, flag);
 }

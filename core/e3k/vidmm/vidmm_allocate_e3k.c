@@ -216,6 +216,16 @@ static void vidmmi_validate_allocation_info_e3k(vidmm_mgr_t *mm_mgr, vidmm_alloc
         }
     }
 
+    if (allocation->flag.bVideoInternal && allocation->flag.cpu_visible)
+    {
+        //gf_info("video internal prefer:%d, %d, %d size %dk\n", segments[2], segments[3], segments[4], allocation->size/1024);
+
+        segments[2] = SEGMENT_ID_LOCAL_E3K;
+        segments[3] = SEGMENT_ID_LOCAL_E3K;
+        segments[4] = SEGMENT_ID_LOCAL_E3K;
+        allocation->flag.unpagable = 1;
+    }
+
     preferred_segment_id(0) = segments[0];
     preferred_segment_id(1) = segments[1];
     preferred_segment_id(2) = segments[2];

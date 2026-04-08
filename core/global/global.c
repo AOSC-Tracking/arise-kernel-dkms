@@ -96,6 +96,10 @@ void glb_init_chip_id(adapter_t *adapter, krnl_adapter_init_info_t *info)
             adapter->chip_id = CHIP_ARISE2030;
         else if((adapter->bus_config.device_id & CHIP_MASK) == CHIP_MASK_ARISE2020)
             adapter->chip_id = CHIP_ARISE2020;
+        else if((adapter->bus_config.device_id & CHIP_MASK) == CHIP_MASK_ARISE1020C)
+            adapter->chip_id = CHIP_ARISE1020;
+        else if((adapter->bus_config.device_id & CHIP_MASK) == CHIP_MASK_ARISE1010C)
+            adapter->chip_id = CHIP_ARISE1020;
         else
             adapter->chip_id = CHIP_ARISE;
 
@@ -141,6 +145,7 @@ void glb_init_chip_id(adapter_t *adapter, krnl_adapter_init_info_t *info)
 
     adapter->ctl_flags.recovery_enable = info->gf_recovery_enable;
     adapter->ctl_flags.run_on_qt = info->gf_run_on_qt;
+    adapter->ctl_flags.virtual_display = info->gf_virtual_display;
     // qemu will set default subsystem id to PCI_SUBVENDOR_ID_REDHAT_QUMRANET:PCI_SUBDEVICE_ID_QEMU
     adapter->ctl_flags.run_on_qemu_device = adapter->bus_config.sub_sys_vendor_id == 0x1AF4 && adapter->bus_config.sub_sys_id == 0x1100;
     adapter->ctl_flags.hang_dump            = info->gf_hang_dump;

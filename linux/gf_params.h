@@ -35,7 +35,9 @@ struct gf_params {
     int gf_recovery_enable ; /* enable recovery when hw hang */
     int gf_hang_dump;/*0-disable, 1-pre hang, 2-post hang, 3-duplicate hang */
     int gf_run_on_qt; /* control wether run on QT */
+    int gf_cbios_flags;
     int gf_flag_buffer_verify ;/*0 - disable, 1 - enable */
+    int gf_virtual_display; /* set to enable virutal display for headless boards */
     int gf_vesa_tempbuffer_enable ; /* control wether reserve memory during boot */
 
     int miu_channel_num;    // 0/1/2 for 1/2/3 Miu channel, Elite 3000 support up to 3 MIU channel

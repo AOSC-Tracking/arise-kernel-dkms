@@ -27,6 +27,7 @@
 #include "gf_fence.h"
 #include "gf_modifies.h"
 #include "gf_splice.h"
+#include "gf_trace.h"
 
 #if  DRM_VERSION_CODE >= KERNEL_VERSION(4, 8, 0)
 
@@ -53,6 +54,8 @@ int gf_atomic_helper_update_plane(struct drm_plane *plane,
     const struct drm_plane_helper_funcs *funcs;
     gf_card_t *gf_card = (gf_card_t *)plane->dev->dev_private;
     disp_info_t *disp_info = (disp_info_t *)gf_card->disp_info;
+
+    trace_gfx_update_plane(plane, fb, crtc_x, crtc_y, crtc_w, crtc_h, src_x, src_y, src_w, src_h);
 
     gf_assert(!!crtc == !!fb, GF_FUNC_NAME(__func__));
 
@@ -297,12 +300,12 @@ int gf_plane_atomic_check(struct drm_plane *plane, struct drm_plane_state *new_s
 #endif
     gf_plane_t* gf_plane = to_gf_plane(plane);
     unsigned int src_w, src_h, dst_w, dst_h;
-    int  status = 0;
+    int status = 0;
 
     DRM_DEBUG_KMS("plane=%d\n", plane->index);
 
 #if DRM_VERSION_CODE >= KERNEL_VERSION(5, 13, 0)
-    if (gf_plane->is_cursor)
+    if (gf_plane->is_cursor && state == NULL)
     {
         new_state = plane->state;
     }
@@ -312,19 +315,21 @@ int gf_plane_atomic_check(struct drm_plane *plane, struct drm_plane_state *new_s
     }
 #endif
 
+    trace_gfx_plane_atomic_check(new_state);
+
     src_w = (new_state->src_w >> 16) & 0xFFFF;
     src_h = (new_state->src_h >> 16) & 0xFFFF;
 
     dst_w = new_state->crtc_w;
     dst_h = new_state->crtc_h;
 
-    if(!gf_plane->can_window && (new_state->crtc_x != 0 || new_state->crtc_y != 0))
+    if (!gf_plane->can_window && (new_state->crtc_x != 0 || new_state->crtc_y != 0))
     {
         status = -EINVAL;
         goto END;
     }
 
-    if(!gf_plane->can_up_scale)
+    if (!gf_plane->can_up_scale)
     {
         if((src_w < dst_w) || (src_h < dst_h))
         {
@@ -333,7 +338,7 @@ int gf_plane_atomic_check(struct drm_plane *plane, struct drm_plane_state *new_s
         }
     }
 
-    if(!gf_plane->can_down_scale)
+    if (!gf_plane->can_down_scale)
     {
         if((src_w > dst_w) || (src_h > dst_h))
         {
@@ -344,7 +349,7 @@ int gf_plane_atomic_check(struct drm_plane *plane, struct drm_plane_state *new_s
     //max cursor size if 128x128
     if (gf_plane->is_cursor)
     {
-        if((dst_w > 128) || (dst_h > 128))
+        if ((dst_w > 128) || (dst_h > 128))
         {
             status = -EINVAL;
             goto END;
@@ -463,7 +468,7 @@ void gf_plane_atomic_update_internal(struct drm_plane *plane,  struct drm_plane_
             arg.vsync_on = 1;
         }
 
-        if (plane->state->crtc && !gf_plane_state->disable)
+        if (!gf_plane_state->disable && plane->state->crtc)
         {
             arg.bo          = new_state->fb ? to_gfb(new_state->fb)->obj : NULL;
             arg.pos_x       = new_state->crtc_x;
@@ -478,10 +483,10 @@ void gf_plane_atomic_update_internal(struct drm_plane *plane,  struct drm_plane_
     {
         gf_crtc_flip_t arg = {0};
 
-        arg.crtc        = to_gf_plane(plane)->crtc_index;
-        arg.stream_type = to_gf_plane(plane)->plane_type;
+        arg.crtc = to_gf_plane(plane)->crtc_index;
+        arg.plane_type = to_gf_plane(plane)->plane_type;
 
-        if (new_state->crtc && !gf_plane_state->disable)
+        if (!gf_plane_state->disable && new_state && new_state->crtc)
         {
             arg.fb = new_state->fb;
             arg.crtc_x = new_state->crtc_x;
@@ -566,7 +571,7 @@ void gf_plane_atomic_update(struct drm_plane* plane, struct drm_plane_state* old
     DRM_DEBUG_KMS("Update plane=%d\n", plane->index);
 
 #if DRM_VERSION_CODE >= KERNEL_VERSION(5, 13, 0)
-    if (gf_plane->is_cursor || state == NULL)
+    if (gf_plane->is_cursor && state == NULL)
     {
         new_state = plane->state;
     }
@@ -598,33 +603,13 @@ void gf_plane_atomic_disable(struct drm_plane *plane, struct drm_atomic_state *s
 void gf_plane_atomic_disable(struct drm_plane *plane, struct drm_plane_state *old_state)
 #endif
 {
-#if DRM_VERSION_CODE >= KERNEL_VERSION(5, 13, 0)
-    struct drm_plane_state *old_state = NULL;
-#endif
-    struct drm_plane_state *new_state = NULL;
     gf_plane_state_t* gf_pstate = to_gf_plane_state(plane->state);
-
-#if DRM_VERSION_CODE >= KERNEL_VERSION(5, 13, 0)
-    gf_plane_t* gf_plane = to_gf_plane(plane);
-
-    if (gf_plane->is_cursor || state == NULL)
-    {
-        new_state = plane->state;
-    }
-    else
-    {
-        new_state = drm_atomic_get_new_plane_state(state, plane);
-        old_state = drm_atomic_get_old_plane_state(state, plane);
-    }
-#else
-    new_state = plane->state;
-#endif
 
     DRM_DEBUG_KMS("Disable plane=%d\n", plane->index);
 
     gf_pstate->disable = 1;
 
-    gf_plane_atomic_update_internal(plane, new_state, old_state);
+    gf_plane_atomic_update_internal(plane, NULL, NULL);
 }
 
 #if DRM_VERSION_CODE >= KERNEL_VERSION(4, 9, 0)
@@ -693,6 +678,90 @@ check_done:
 
 #endif
 
+#if defined(CONFIG_DRM_PANIC)
+int gf_plane_get_scanout_buffer(struct drm_plane *plane, struct drm_scanout_buffer *sb)
+{
+    struct drm_device *dev = plane->dev;
+    struct drm_fb_helper *fb_helper = dev->fb_helper;
+    struct drm_crtc *crtc = NULL;
+    struct drm_framebuffer *fb = NULL;
+
+    gf_card_t *card = dev->dev_private;
+    gf_plane_t *gf_plane = to_gf_plane(plane);
+    struct drm_gf_framebuffer *gfb = NULL;
+    struct drm_gem_object *gem = NULL;
+
+    gf_crtc_flip_t arg = {0};
+    unsigned int cur_width, cur_height;
+    int ret = -EINVAL;
+
+    if (!plane->state || !plane->state->fb || gf_plane->is_cursor)
+        return -EINVAL;
+
+    fb = plane->state->fb;
+    gfb = to_gfb(fb);
+
+    if (gfb->obj && (fb->modifier == DRM_FORMAT_MOD_LINEAR))
+    {
+        gem = &gfb->obj->base;
+
+#if DRM_VERSION_CODE >= KERNEL_VERSION(6, 16, 0)
+        ret = drm_gem_vmap(gem, &sb->map[0]);
+#else
+        ret = drm_gem_vmap_unlocked(gem, &sb->map[0]);
+#endif
+    }
+
+    cur_width = fb->width;
+    cur_height = fb->height;
+
+    if (ret)
+    {
+        if (!fb_helper || !fb_helper->fb || !plane->state->crtc)
+            return -EINVAL;
+
+        crtc = plane->state->crtc;
+        fb = fb_helper->fb;
+        gfb = to_gfb(fb);
+
+        if (!gfb->obj)
+            return -EINVAL;
+
+        gem = &gfb->obj->base;
+
+        arg.fb = fb;
+        arg.crtc = to_gf_crtc(crtc)->pipe;
+        arg.plane_type = gf_plane->plane_type;
+        arg.crtc_x = 0;
+        arg.crtc_y = 0;
+        arg.crtc_w = cur_width;
+        arg.crtc_h = cur_height;
+        arg.src_x = 0;
+        arg.src_y = 0;
+        arg.src_w = cur_width < fb->width ? cur_width : fb->width;
+        arg.src_h = cur_height < fb->height ? cur_height : fb->height;
+
+        disp_cbios_crtc_flip(card->disp_info, &arg);
+
+#if DRM_VERSION_CODE >= KERNEL_VERSION(6, 16, 0)
+        ret = drm_gem_vmap(gem, &sb->map[0]);
+#else
+        ret = drm_gem_vmap_unlocked(gem, &sb->map[0]);
+#endif
+
+        cur_width = arg.src_w;
+        cur_height = arg.src_h;
+    }
+
+    sb->format = fb->format;
+    sb->height = cur_height;
+    sb->width = cur_width;
+    sb->pitch[0] = fb->pitches[0];
+
+    return ret;
+}
+#endif
+
 #else
 
 int gf_update_plane(struct drm_plane *plane, struct drm_crtc *crtc,
@@ -758,7 +827,7 @@ int gf_update_plane(struct drm_plane *plane, struct drm_crtc *crtc,
 
     arg.fb = fb;
     arg.crtc = to_gf_crtc(crtc)->pipe;
-    arg.stream_type = gf_plane->plane_type;
+    arg.plane_type = gf_plane->plane_type;
     arg.crtc_x = crtc_x;
     arg.crtc_y = crtc_y;
     arg.crtc_w = crtc_w;

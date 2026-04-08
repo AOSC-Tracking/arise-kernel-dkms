@@ -268,4 +268,6 @@ extern void vidsch_read_miu_reg(adapter_t *adapter,gf_query_info_t *info);
 extern int vidsch_query_info(adapter_t *adapter, gf_query_info_t *info);
 extern void vidsch_force_wakup(adapter_t *adapter);
 
+extern void vidsch_selftest(adapter_t *adapter);
+
 #endif

@@ -25,36 +25,37 @@
 #define _REGISTER_DEF_H
 
 #include     "BlockID.h"
-#include      "CSP_GLOBAL_Register.h"
+#include     "CSP_GLOBAL_Register.h"
 #include     "CSP_OPCODE.h"
-#include      "TASFE_reg.h"
-#include      "TASBE_reg.h"
-#include      "EU_FS_reg.h"
-#include      "EU_CS_reg.h"
-#include      "IU_reg.h"
-#include      "SPIN_register.h"
-#include      "SPOUT_register.h"
-#include      "EU_PS_reg.h"
-#include      "FF_registers.h"
-#include      "TU_Reg.h"
-#include      "GPCPBE_register.h"
-#include      "GPCPFE_register.h"
-#include      "MMU_registers.h"
-#include      "MXU_registers.h"
-#include      "Vcp_Registers.h"
-#include      "WLS_Registers.h"
-#include      "L2_Register.h"
+#include     "TASFE_reg.h"
+#include     "TASBE_reg.h"
+#include     "EU_FS_reg.h"
+#include     "EU_CS_reg.h"
+#include     "IU_reg.h"
+#include     "SPIN_register.h"
+#include     "SPOUT_register.h"
+#include     "EU_PS_reg.h"
+#include     "FF_registers.h"
+#include     "TU_Reg.h"
+#include     "GPCPBE_register.h"
+#include     "GPCPFE_register.h"
+#include     "MMU_registers.h"
+#include     "MXU_registers.h"
+#include     "Vcp_Registers.h"
+#include     "WLS_Registers.h"
+#include     "L2_Register.h"
 #include     "VCP_OPCODE_DECOUPLE.h"
+#include     "PMU_Register.h"
 
 #define MMIO_FLAG 0x000FF000
 #define MMIO_MIU_START_ADDRESS                  0x00008000
 #define MMIO_MIU_DYNAMIC_FB_START_ADDRESS       0x00008B00
-#define MMIO_VPP_START_ADDRESS                  0x0000B000
 #define MMIO_CSP_START_ADDRESS                  0x00030000
 #define MMIO_MMU_START_ADDRESS                  0x00050000
 #define MMIO_MXU_START_ADDRESS                  0x00049000
 #define MMIO_VCP0_START_ADDRESS                 0x0004C000
 #define MMIO_VCP1_START_ADDRESS                 0x0004A000
+#define MMIO_VPP_START_ADDRESS                  0x0004B000
 
 
 #define MMIO_EU_START_ADDRESS                   (MMIO_CSP_START_ADDRESS|(Reg_Eu_Dbg_Cfg_Offset<<2))

@@ -44,10 +44,11 @@ void vidmm_init_mem_settings_e3k(adapter_t *adapter)
     Reg_Ttbr                        reg_Ttbr                      = {0};
     unsigned char *                 pRegAddr                      = NULL;
     unsigned int pending_buf_len = (adapter->chip_id < CHIP_ARISE1020) ? 0x4 : 0x40;
+    unsigned int is_hp = (adapter->bus_config.revision_id == 0x10) ? 1: 0;
 
     //vcp0 decouple disable 0x4c910 0x1
     //if miu numble is larger than 1, we enable decouple, others disable.
-    if(adapter->chip_id >= CHIP_ARISE1020 && adapter->chip_id != CHIP_ARISE2030)
+    if(adapter->chip_id >= CHIP_ARISE1020)
     {
         pRegAddr = adapter->mmio + 0x4c910;
         gf_write32(pRegAddr, 0x1);
@@ -100,7 +101,15 @@ void vidmm_init_mem_settings_e3k(adapter_t *adapter)
         reg_Mxu_Channel_Control.reg.Miu_Channel2_Disable = 1;
 
         pRegAddr = adapter->mmio + MMIO_MXU_START_ADDRESS + Reg_Diu_Reserve_Ctrl_Offset*4;
-        gf_write32(pRegAddr, 0x1200003);
+
+        if (is_hp)
+        {
+            gf_write32(pRegAddr, 0x00070003);
+        }
+        else
+        {
+            gf_write32(pRegAddr, 0x1200003);
+        }
     }else if (adapter->hw_caps.miu_channel_num == 2)
     {
         reg_Mxu_Channel_Control.reg.Miu_Channel0_Disable = 0;
@@ -130,6 +139,16 @@ void vidmm_init_mem_settings_e3k(adapter_t *adapter)
     pRegAddr =adapter->mmio + MMIO_MXU_START_ADDRESS + Reg_Mxu_Channel_Control_Offset*4;
     gf_write32(pRegAddr, reg_Mxu_Channel_Control.uint);
     //gf_info(" reg_Mxu_Channel_Control.uint 0x%x readvalue: 0x%x \n", reg_Mxu_Channel_Control.uint, gf_read32(pRegAddr));
+
+    if (is_hp)
+    {
+        Reg_Miu_Port_Decode Reg_Miu_Port_Decode = { 0 };
+        Reg_Miu_Port_Decode.uint = 0xffffffff;
+
+        pRegAddr = adapter->mmio + MMIO_MXU_START_ADDRESS + Reg_Miu_Port_Decode_Offset * 4;
+
+        gf_write32(pRegAddr, Reg_Miu_Port_Decode.uint);
+    }
 
     //mxu vcp priority higher 0x4908c 0x11000202
     pRegAddr = adapter->mmio + 0x4908c;
@@ -174,12 +193,33 @@ void vidmm_query_segment_info_e3k(adapter_t *adapter, vidmm_chip_segment_info_t 
     vidmm_segment_desc_t *segments_desc = NULL;
     vidmm_segment_desc_t *segment_desc  = NULL;
     unsigned long long boundry_for_unvisible_segment_low=0llu;
+    unsigned long long paging_extra_size = 0llu;
     int size_for_secure_range = 0;
 
     //use default memory size
     if(adapter->gart_ram_size == 0)
     {
         adapter->gart_ram_size = GART_MEMORY_SIZE_E3K;
+    }
+
+    if (adapter->ctl_flags.paging_enable)
+    {
+        /**
+         * This will add extra gart size for paging segment.
+         * gart_ram_size will sub paging_extra_size in the end.
+         *
+         * snoop_only: false
+         *  2G vram:  snoop: GART_MEMORY_SIZE_E3K/2  unsnoop: GART_MEMORY_SIZE_E3K/2 + 4G
+         *  xG vram:  snoop: GART_MEMORY_SIZE_E3K/2  unsnoop: GART_MEMORY_SIZE_E3K/2 + ((x + 3) / 4) * 4G
+         * snoop_only: true
+         *  2G vram:  snoop: GART_MEMORY_SIZE_E3K + 4G
+         *  xG vram:  snoop: GART_MEMORY_SIZE_E3K + ((x + 3) / 4) * 4G
+        */
+        paging_extra_size = ((adapter->Real_vram_size >> 30) + 3) / 4;
+        paging_extra_size <<= 32; // N * 4G
+        adapter->gart_ram_size += paging_extra_size * 2;
+
+        gf_info("add extra paging segment size:%u MB\n", paging_extra_size >> 20);
     }
 
     size_for_secure_range =
@@ -233,7 +273,7 @@ void vidmm_query_segment_info_e3k(adapter_t *adapter, vidmm_chip_segment_info_t 
     segment_desc->gpu_vm_start     = adapter->hw_caps.secure_range_enable ? (adapter->Visible_vram_size - size_for_secure_range):0;
     segment_desc->gpu_vm_size      = adapter->hw_caps.secure_range_enable ? SECURE_RANGE_BUFFER_SIZE:0;
     segment_desc->segment_alignment      = adapter->os_page_size;//drm_gem_private_object_init has PAGE_SIZE check.
-    segment_desc->flags.cpu_visible      = 1;
+    segment_desc->flags.cpu_visible      = 0;
     segment_desc->flags.support_aperture = 0;
     segment_desc->flags.mtrr             = 1;
     segment_desc->flags.secure_range = 1;
@@ -245,7 +285,7 @@ void vidmm_query_segment_info_e3k(adapter_t *adapter, vidmm_chip_segment_info_t 
     segment_desc->gpu_vm_start     = adapter->hw_caps.secure_range_enable ? (adapter->Visible_vram_size - size_for_secure_range + SECURE_RANGE_BUFFER_SIZE):0;
     segment_desc->gpu_vm_size      = adapter->hw_caps.secure_range_enable ? SECURE_RANGE_BUFFER_SIZE:0;
     segment_desc->segment_alignment      = adapter->os_page_size;//drm_gem_private_object_init has PAGE_SIZE check.
-    segment_desc->flags.cpu_visible      = 1;
+    segment_desc->flags.cpu_visible      = 0;
     segment_desc->flags.support_aperture = 0;
     segment_desc->flags.mtrr             = 1;
     segment_desc->flags.secure_range = 1;
@@ -280,7 +320,7 @@ void vidmm_query_segment_info_e3k(adapter_t *adapter, vidmm_chip_segment_info_t 
     segment_desc->segment_id       = SEGMENT_ID_GART_SNOOPABLE_E3K;
     segment_desc->segment_name     = "Segment Snoopable";
     segment_desc->gpu_vm_start     = adapter->Real_vram_size + segments_desc[SEGMENT_ID_GART_UNSNOOPABLE_E3K].gpu_vm_size;
-    segment_desc->gpu_vm_size      = SNOOPABLE_SEGMENT_RATION_E3K(adapter->gart_ram_size);
+    segment_desc->gpu_vm_size      = SNOOPABLE_SEGMENT_RATION_E3K(adapter->gart_ram_size) - paging_extra_size;
     segment_desc->reserved_vm_size = 0;
     segment_desc->small_heap_size  = SMALL_HEAP_SIZE_E3K;
     segment_desc->small_heap_max_allocate_size = SMALL_HEAP_MAX_ALLOCATE_SIZE_GART_E3K;
@@ -324,12 +364,16 @@ void vidmm_query_segment_info_e3k(adapter_t *adapter, vidmm_chip_segment_info_t 
     segment_desc->flags.system_pages_reserved = 0;
     segment_desc->flags.chip_phys_mem_reserved = 1;
 
+    /* finally: gart_ram_size = gart_ram_size + paging_extra_size * 1 */
+    if (adapter->ctl_flags.paging_enable)
+        adapter->gart_ram_size -= paging_extra_size;
+
     /* init paging segment */
     if(!adapter->hw_caps.snoop_only)
         info->paging_segment_id   = SEGMENT_ID_GART_UNSNOOPABLE_E3K;
     else
         info->paging_segment_id   = SEGMENT_ID_GART_SNOOPABLE_E3K;
-    info->paging_segment_size = PAGING_SEGMENT_SIZE_E3K;
+    info->paging_segment_size = (paging_extra_size > PAGING_SEGMENT_SIZE_E3K) ? paging_extra_size : PAGING_SEGMENT_SIZE_E3K;
 }
 
 static int vidmm_query_segment_mem_e3k(struct _vidmm_mgr *mm_mgr, gf_query_info_t *info)
@@ -400,7 +444,7 @@ int vidmm_segment_memory_transfer_e3k(adapter_t *adapter, vidmm_segment_memory_t
     if (!(*dst_pointer))
     {
         // If dst_pointer not point a vaild segment_memory, we will alloc a new segment memory to *dst_pointer
-        *dst_pointer = vidmm_allocate_segment_memory(adapter, to_local ? SEGMENT_ID_LOCAL_E3K : SEGMENT_ID_GART_UNSNOOPABLE_E3K, src->list_node->aligned_size, 0);
+        *dst_pointer = vidmm_allocate_segment_memory(adapter, to_local ? SEGMENT_ID_LOCAL_E3K : (adapter->hw_caps.snoop_only ? SEGMENT_ID_GART_SNOOPABLE_E3K : SEGMENT_ID_GART_UNSNOOPABLE_E3K), src->list_node->aligned_size, 0);
         if (!(*dst_pointer))
         {
             result = E_OUTOFMEMORY;
@@ -446,6 +490,87 @@ error:
 
 }
 
+void vidsch_selftest_e3k(adapter_t *adapter)
+{
+    struct _vidmm_segment_memory *src_segment = NULL, *dst_segment = NULL;
+    vidmm_map_flags_t map_flags = {0};
+    unsigned char value, pattern_0 = 0xAA, pattern_1 = 0x55, *src_virt_addr = NULL, *dst_virt_addr = NULL;
+    int n, test_size = 1 << 15, result = 0;
+
+    src_segment = vidmm_allocate_segment_memory(adapter, SEGMENT_ID_LOCAL_E3K, test_size, 0);
+    if (!src_segment)
+    {
+        gf_error("failed to alloc memory for selftest\n");
+        goto done;
+    }
+
+    map_flags.mem_space = GF_MEM_KERNEL;
+    map_flags.cache_type = GF_MEM_WRITE_COMBINED;
+
+    vidmm_map_segment_memory(adapter, NULL, src_segment, &map_flags);
+    src_virt_addr = (unsigned char *)src_segment->vma->virt_addr;
+    if (!src_virt_addr)
+    {
+        gf_error("failed to map for selftest\n");
+        goto done;
+    }
+
+    gf_memset(src_virt_addr, pattern_0, test_size);
+    for (n = 0; n < test_size; n++)
+    {
+        value = *(src_virt_addr + n);
+        if (value != pattern_0)
+        {
+            gf_error("memory selftest fault! phy addr:0x%llx offset:%u value:0x%x\n", src_segment->gpu_virt_addr, n, value);
+            goto done;
+        }
+    }
+
+    gf_memset(src_virt_addr, pattern_1, test_size);
+
+    result = vidmm_segment_memory_transfer_e3k(adapter, &dst_segment, src_segment, FALSE);
+    if (result)
+    {
+        gf_error("failed to transfer memory selftest\n");
+        goto done;
+    }
+
+    vidmm_map_segment_memory(adapter, NULL, dst_segment, &map_flags);
+    dst_virt_addr = (unsigned char *)dst_segment->vma->virt_addr;
+    if (!dst_virt_addr)
+    {
+        gf_error("failed to map transfer memory for selftest\n");
+        goto done;
+    }
+
+    for (n = 0; n < test_size; n++)
+    {
+        value = *(dst_virt_addr + n);
+        if (value != pattern_1)
+        {
+            gf_error("engine test fault! phy addr:0x%llx offset:%u value:0x%x\n", dst_segment->gpu_virt_addr, n, value);
+            goto done;
+        }
+    }
+
+    gf_info("self test done\n");
+
+done:
+    if (src_virt_addr)
+        vidmm_unmap_segment_memory(adapter, src_segment, GF_MEM_KERNEL);
+
+    if (dst_virt_addr)
+        vidmm_unmap_segment_memory(adapter, dst_segment, GF_MEM_KERNEL);
+
+    if (src_segment)
+        vidmm_release_segment_memory(adapter, src_segment);
+
+    if (dst_segment)
+        vidmm_release_segment_memory(adapter, dst_segment);
+
+    return;
+}
+
 vidmm_chip_func_t   vidmm_chip_func =
 {
     .query_segment_info       = vidmm_query_segment_info_e3k,
@@ -461,6 +586,7 @@ vidmm_chip_func_t   vidmm_chip_func =
     .get_allocation_info      = vidmm_get_allocation_info_e3k,
     .query_info               = vidmm_query_segment_mem_e3k,
     .segment_memory_transfer  = vidmm_segment_memory_transfer_e3k,
+    .selftest                 = vidsch_selftest_e3k,
 };
 
 

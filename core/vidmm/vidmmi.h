@@ -104,7 +104,7 @@ typedef struct _vidmm_chip_segment_info_t
     unsigned long long    cpu_visible_vidmm_size;
     unsigned long long    cpu_unvisible_vidmm_size;
     unsigned int          paging_segment_id;
-    unsigned int          paging_segment_size;
+    unsigned long long    paging_segment_size;
 } vidmm_chip_segment_info_t;
 
 typedef struct _vidmm_chip_func
@@ -123,6 +123,7 @@ typedef struct _vidmm_chip_func
     void (*restore)(adapter_t *);
     int  (*query_info)(struct _vidmm_mgr *, gf_query_info_t *);
     int  (*segment_memory_transfer)(adapter_t *, vidmm_segment_memory_t **, vidmm_segment_memory_t *, int);
+    void (*selftest)(adapter_t *);
 } vidmm_chip_func_t;
 
 typedef struct _vidmm_mgr

@@ -188,7 +188,7 @@ static CBIOS_VOID cbSetPixelRepetition(PCBIOS_EXTENSION_COMMON pcbe, CBIOS_U8 Pi
     }
     else if (PixelRepitition == 4)
     {
-       if (IGAIndex == IGA1)
+        if (IGAIndex == IGA1)
         {
             RegCRF1Value.Value = 0;
             RegCRF1Value.IGA1_Pixel_Repetition = 2;
@@ -359,7 +359,6 @@ static  CBIOS_VOID cbSetDacRegisters(PCBIOS_EXTENSION_COMMON pcbe)
 static CBIOS_VOID cbSetSrcTiming(PCBIOS_EXTENSION_COMMON pcbe, PCBIOS_DISP_MODE_PARAMS pModeParams, CBIOS_U32 IGAIndex)
 {
     CBIOS_U32 ulDevices = pcbe->DispMgr.ActiveDevices[IGAIndex];
-    CBiosDestModeParams ModeParams = {0};
     CBIOS_TIMING_ATTRIB Timing = {0};
     CBIOS_TIMING_FLAGS  TimingFlags = {0};
     REG_SR47 SR47Value = {0}, SR47Mask = {0xff};
@@ -367,6 +366,7 @@ static CBIOS_VOID cbSetSrcTiming(PCBIOS_EXTENSION_COMMON pcbe, PCBIOS_DISP_MODE_
     REG_MM33720_Arise CursorBaseAddrRegValue = {0};
     CBIOS_U32 CursorControl1Index[CBIOS_IGACOUNTS] = {0x33718, 0x33bb4, 0x342b4, 0x349b4};
     CBIOS_U32 CursorBaseAddrIndex[CBIOS_IGACOUNTS] = {0x33720, 0x33bbc, 0x342bc, 0x349bc};
+    CBIOS_QUERY_MODE_FLAGS QueryModeFlags = {0};
 
     cbTraceEnter(GENERIC);
 
@@ -389,17 +389,15 @@ static CBIOS_VOID cbSetSrcTiming(PCBIOS_EXTENSION_COMMON pcbe, PCBIOS_DISP_MODE_
 
     cbModeEnvSetup(pcbe, (CBIOS_U8)IGAIndex);
 
-    ModeParams.AspectRatioFlag = 0;
-    ModeParams.XRes = pModeParams->SrcModePara.XRes;
-    ModeParams.YRes = pModeParams->SrcModePara.YRes;
-    ModeParams.RefreshRate = pModeParams->TargetModePara.RefRate;
-    ModeParams.InterlaceFlag = CBIOS_FALSE;
+    QueryModeFlags.IsInterLaced = 0;
+    QueryModeFlags.Is3DVideoMode = 0;
+    QueryModeFlags.IsYCC420Mode = 0;
 
     cbMode_GetHVTiming(pcbe,
-                       ModeParams.XRes,
-                       ModeParams.YRes,
-                       ModeParams.RefreshRate,
-                       ModeParams.InterlaceFlag,
+                       pModeParams->SrcModePara.XRes,
+                       pModeParams->SrcModePara.YRes,
+                       pModeParams->TargetModePara.RefRate,
+                       QueryModeFlags,
                        ulDevices,
                        &Timing);
 

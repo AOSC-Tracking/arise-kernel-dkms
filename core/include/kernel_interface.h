@@ -46,6 +46,7 @@ struct krnl_adapter_init_info_s
     int gf_recovery_enable ; /* enable recovery when hw hang */
     int gf_hang_dump;/*0-disable, 1-pre hang, 2-post hang, 3-duplicate hang */
     int gf_run_on_qt; /* control wether run on QT */
+    int gf_virtual_display;
     int gf_flag_buffer_verify ;/*0 - disable, 1 - enable */
     int gf_vesa_tempbuffer_enable ; /* control wether reserve memory during boot */
 
@@ -70,6 +71,7 @@ typedef  struct
         unsigned int  family_id;
         unsigned int  generic_id;
         unsigned int  chip_id;
+        unsigned int  revision_id;
         unsigned char*   mmio;
         unsigned int  mmio_size;
         unsigned int  primary;
@@ -83,7 +85,8 @@ typedef  struct
             struct
             {
                 unsigned int  run_on_qt:1;
-                unsigned int  Reserved:31;
+                unsigned int  virtual_display:1;
+                unsigned int  Reserved:30;
             };
         };
     };
@@ -173,6 +176,7 @@ typedef struct
     void (*disp_state_update)(void* data, unsigned int state);
     int (*get_power_state)(void* data, unsigned int *state);
     int (*set_power_state)(void* data, unsigned int state, unsigned int holding_ms, unsigned int force, unsigned int lcok, unsigned int unlock);
+    void (*selftest)(void* data);
 } core_interface_t;
 
 extern core_interface_t *gf_core_interface;

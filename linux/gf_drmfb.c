@@ -60,6 +60,9 @@ static const struct drm_framebuffer_funcs gf_fb_funcs =
 
 struct drm_gf_framebuffer*
 __gf_framebuffer_create(struct drm_device *dev,
+#if DRM_VERSION_CODE >= KERNEL_VERSION(6, 17, 0)
+                        const struct drm_format_info *info,
+#endif
                         struct drm_mode_fb_cmd2 *mode_cmd,
                         struct drm_gf_gem_object *obj)
 {
@@ -72,9 +75,17 @@ __gf_framebuffer_create(struct drm_device *dev,
 #if DRM_VERSION_CODE < KERNEL_VERSION(4, 11, 0)
     drm_helper_mode_fill_fb_struct(&gfb->base, mode_cmd);
 #else
+#if DRM_VERSION_CODE < KERNEL_VERSION(6, 17, 0)
     drm_helper_mode_fill_fb_struct(dev, &gfb->base, mode_cmd);
+#else
+    drm_helper_mode_fill_fb_struct(dev, &gfb->base, info, mode_cmd);
+#endif
 #endif
     gfb->obj = obj;
+
+#if DRM_VERSION_CODE >= KERNEL_VERSION(4, 14, 0)
+    gfb->base.obj[0] = &obj->base;
+#endif
 
     ret = drm_framebuffer_init(dev, &gfb->base, &gf_fb_funcs);
     if (ret)
@@ -92,6 +103,9 @@ gf_fb_create(struct drm_device *dev,
 #if DRM_VERSION_CODE < KERNEL_VERSION(4, 5, 0) && !defined (PHYTIUM_2000)
               struct drm_mode_fb_cmd2 *user_mode_cmd
 #else
+         #if DRM_VERSION_CODE >= KERNEL_VERSION(6, 17, 0)
+              const struct drm_format_info *info,
+         #endif
               const struct drm_mode_fb_cmd2 *user_mode_cmd
 #endif
               )
@@ -104,7 +118,11 @@ gf_fb_create(struct drm_device *dev,
     if (!obj)
         return ERR_PTR(-ENOENT);
 
+#if DRM_VERSION_CODE >= KERNEL_VERSION(6, 17, 0)
+    fb = __gf_framebuffer_create(dev, info, &mode_cmd, obj);
+#else
     fb = __gf_framebuffer_create(dev, &mode_cmd, obj);
+#endif
     if (IS_ERR(fb))
         gf_gem_object_put(obj);
 

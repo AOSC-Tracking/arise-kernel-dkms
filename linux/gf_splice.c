@@ -25,6 +25,7 @@
 #include "gf_disp.h"
 #include "gf_cbios.h"
 #include "gf_crtc.h"
+#include "gf_modifies.h"
 #include "gf_kms.h"
 #include "gf_drmfb.h"
 #include "gf_fence.h"
@@ -66,6 +67,20 @@ static const int splice_cursor_formats[] = {
     DRM_FORMAT_XRGB8888,
     DRM_FORMAT_ARGB8888,
 };
+
+#if DRM_VERSION_CODE >= KERNEL_VERSION(5, 14, 0)
+static const uint64_t chx_splice_cursor_modifiers[] = {
+    DRM_FORMAT_MOD_GF_LINEAR,
+    DRM_FORMAT_MOD_GF_INVALID
+};
+
+static const uint64_t chx_splice_plane_modifiers[] = {
+    DRM_FORMAT_MOD_GF_DISPLAY,
+    DRM_FORMAT_MOD_GF_LINEAR,
+    DRM_FORMAT_MOD_GF_INVALID
+};
+
+#endif
 
 struct drm_crtc* gf_splice_get_crtc_by_source(struct drm_device *dev, gf_splice_source_t *source)
 {
@@ -508,10 +523,10 @@ static void gf_splice_encoder_atomic_mode_set(struct drm_encoder *encoder,
     gf_card_t *gf_card = dev->dev_private;
     disp_info_t* disp_info = (disp_info_t *)gf_card->disp_info;
     gf_splice_manager_t *manager = disp_info->splice_manager;
-    int flag = 0;
+    update_mode_flag_t flag = {0};
     int i  = 0;
 
-    flag |= UPDATE_ENCODER_MODE_FLAG;
+    flag.set_encoder = 1;
 
     for (i = 0; i < manager->source_num; i++)
     {
@@ -881,7 +896,7 @@ static void gf_splice_plane_atomic_update_internal(struct drm_plane *plane,  str
             gf_crtc_flip_t arg = {0};
 
             arg.crtc = drm_get_crtc_index(splice_crtc);
-            arg.stream_type = to_gf_plane(plane)->plane_type;
+            arg.plane_type = to_gf_plane(plane)->plane_type;
 
             if (new_state->crtc && !gf_plane_state->disable)
             {
@@ -1029,6 +1044,7 @@ static gf_plane_t* gf_splice_plane_create(gf_splice_manager_t* splice_manager, i
     gf_plane_t *gf_plane = NULL;
     gf_plane_state_t* gf_pstate = NULL;
     const int* formats = 0;
+    const uint64_t *modifiers = NULL;
     char* name;
     int fmt_count = 0;
     int drm_ptype, ret = 0;
@@ -1045,13 +1061,13 @@ static gf_plane_t* gf_splice_plane_create(gf_splice_manager_t* splice_manager, i
 
     if (is_cursor)
     {
-        gf_plane->plane_type = GF_SPLICE_CURSOR_PLANE;
+        gf_plane->plane_type = GF_PLANE_CURSOR;
         gf_plane->is_cursor = 1;
         gf_plane->can_window = 1;
     }
     else
     {
-        gf_plane->plane_type = GF_SPLICE_PRIMARY_PLANE;
+        gf_plane->plane_type = GF_PLANE_PS;
         gf_plane->can_window =  0;
         gf_plane->can_up_scale = 0;
         gf_plane->can_down_scale = 0;
@@ -1071,6 +1087,9 @@ static gf_plane_t* gf_splice_plane_create(gf_splice_manager_t* splice_manager, i
     {
         formats = splice_cursor_formats;
         fmt_count = sizeof(splice_cursor_formats)/sizeof(splice_cursor_formats[0]);
+    #if  DRM_VERSION_CODE >= KERNEL_VERSION(5, 14, 0)
+        modifiers = chx_splice_cursor_modifiers;
+    #endif
         name = "cursor";
         drm_ptype = DRM_PLANE_TYPE_CURSOR;
     }
@@ -1078,13 +1097,16 @@ static gf_plane_t* gf_splice_plane_create(gf_splice_manager_t* splice_manager, i
     {
         formats = splice_plane_formats;
         fmt_count = sizeof(splice_plane_formats)/sizeof(splice_plane_formats[0]);
+    #if  DRM_VERSION_CODE >= KERNEL_VERSION(5, 14, 0)
+        modifiers = chx_splice_plane_modifiers;
+    #endif
         name = "PS";
         drm_ptype = DRM_PLANE_TYPE_PRIMARY;
     }
 
     ret = drm_universal_plane_init(drm, &gf_plane->base_plane,
                                     (1 << target_crtc_index), &gf_splice_plane_funcs,
-                                    formats, fmt_count, NULL,
+                                    formats, fmt_count, modifiers,
                                     drm_ptype,
                                     "IGA%d-%s", (target_crtc_index + 1), name);
     if (ret)
@@ -1575,10 +1597,10 @@ static void gf_splice_crtc_helper_set_mode(struct drm_crtc *crtc)
     struct drm_crtc *vblank_crtc = gf_splice_get_crtc_by_source(dev, vblank_source);
     gf_get_counter_t  gf_counter;
     int  vblank_cnt = 0;
-    int flag = 0;
+    update_mode_flag_t flag = {0};
     int i  = 0, j = 0;
 
-    flag |= UPDATE_CRTC_MODE_FLAG;
+    flag.set_crtc = 1;
 
     for (i = 0; i < manager->source_num; i++)
     {
@@ -1742,7 +1764,11 @@ static bool gf_splice_need_wait_vblank(struct drm_crtc *crtc, struct drm_crtc_st
         if(old_crtc_state->state->planes[i].ptr)
         {
             plane = old_crtc_state->state->planes[i].ptr;
+#if  DRM_VERSION_CODE < KERNEL_VERSION(6, 19, 0)
             old_plane_state = old_crtc_state->state->planes[i].state;
+#else
+            old_plane_state = old_crtc_state->state->planes[i].state_to_destroy;
+#endif
             if(plane->state->crtc == crtc && crtc->state && (crtc->state->plane_mask & (1 << plane->index)))
             {
                 if(plane->state->fb != old_plane_state->fb)
@@ -2103,7 +2129,7 @@ int gf_splice_find_source_hw_mode(gf_splice_manager_t *splice_manager,
     int ret = -1;
 
     drm_mode_copy(hw_mode, mode);
-    if(gf_encoder_mode_fixup_internal(disp_info, output, (const struct drm_display_mode*)mode, hw_mode))
+    if(gf_encoder_mode_fixup_internal(disp_info, output, (const struct drm_display_mode*)mode, hw_mode, NULL))
     {
         ret = 0;
     }

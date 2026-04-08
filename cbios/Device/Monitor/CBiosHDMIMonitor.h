@@ -333,6 +333,7 @@ typedef struct _CBIOS_HDMI_MONITOR_CONTEXT
     CBIOS_U32 HDMIClock;        // HDMI clock
     CBIOS_BOOL ReadRequestEnable;
     CBIOS_BOOL ScramblingEnable;
+    CBIOS_BOOL SCDCConfigureFailed;
 }CBIOS_HDMI_MONITOR_CONTEXT, *PCBIOS_HDMI_MONITOR_CONTEXT;
 
 CBIOS_BOOL cbHDMIMonitor_Detect(PCBIOS_VOID pvcbe, PCBIOS_HDMI_MONITOR_CONTEXT pHDMIMonitorContext, CBIOS_BOOL bHardcodeDetected, CBIOS_U32 FullDetect);

@@ -95,6 +95,14 @@ CBIOS_VOID cbDeInitDeviceArray(PCBIOS_VOID pvcbe)
     {
         if (pcbe->DeviceMgr.pDeviceArray[i] != CBIOS_NULL)
         {
+            if (pcbe->DeviceMgr.pDeviceArray[i]->EdidStruct.DisplayID_Dtl_Timings)
+            {
+                cb_FreePool(pcbe->DeviceMgr.pDeviceArray[i]->EdidStruct.DisplayID_Dtl_Timings);
+                pcbe->DeviceMgr.pDeviceArray[i]->EdidStruct.DisplayID_Dtl_Timings = CBIOS_NULL;
+                pcbe->DeviceMgr.pDeviceArray[i]->EdidStruct.DisplayID_Dtl_ModeCnt = 0;
+                pcbe->DeviceMgr.pDeviceArray[i]->EdidStruct.DisplayID_ArrayCapacity = 0;
+            }
+
             CurDevice = pcbe->DeviceMgr.pDeviceArray[i]->DeviceType;
             switch (CurDevice)
             {
@@ -166,9 +174,9 @@ CBIOS_VOID cbDevSetModeToDevice(PCBIOS_VOID pvcbe, PCBIOS_DEVICE_COMMON pDevComm
 CBIOS_STATUS cbDevGetModeTiming(PCBIOS_VOID pvcbe, PCBIOS_DEVICE_COMMON pDevCommon, PCBIOS_GET_MODE_TIMING_PARAM pGetModeTiming)
 {
     PCBIOS_EXTENSION_COMMON pcbe = (PCBIOS_EXTENSION_COMMON)pvcbe;
-    PCBiosDestModeParams      pDestModeParams = CBIOS_NULL;
     PCBIOS_TIMING_ATTRIB      pTiming = CBIOS_NULL;
     CBIOS_STATUS              Status = CBIOS_ER_INTERNAL;
+    CBIOS_QUERY_MODE_FLAGS    QueryModeFlags = {0};
 
     if(CBIOS_NULL == pGetModeTiming)
     {
@@ -184,41 +192,27 @@ CBIOS_STATUS cbDevGetModeTiming(PCBIOS_VOID pvcbe, PCBIOS_DEVICE_COMMON pDevComm
         goto END;
     }
 
-    pDestModeParams = cb_AllocatePagedPool(sizeof(CBiosDestModeParams));
-    if(CBIOS_NULL == pDestModeParams)
-    {
-        cbDebugPrint((MAKE_LEVEL(GENERIC, ERROR), "%s: Allocat pDestModeParams fail!\n", FUNCTION_NAME));
-        Status =  CBIOS_ER_INTERNAL;
-        goto END;
-    }
-
     cb_memset(pTiming, 0, sizeof(CBIOS_TIMING_ATTRIB));
 
-    // 1. cbMode_GetHVTiming only use XRes, YRes, InterlaceFlag and RefreshRate to look for the detail timing.
-    // Therefore we init others items to 0
-    pDestModeParams->Size = sizeof(CBiosDestModeParams);
-    pDestModeParams->XRes = pGetModeTiming->pMode->XRes;
-    pDestModeParams->YRes = pGetModeTiming->pMode->YRes;
-    pDestModeParams->RefreshRate = pGetModeTiming->pMode->RefreshRate;
-    pDestModeParams->InterlaceFlag = (pGetModeTiming->pMode->InterlaceProgressiveCaps & 0x2) ? 1 : 0;
+    // 1. cbMode_GetHVTiming only use XRes, YRes, RefreshRate and Other mode flags in CBIOS_QUERY_MODE_FLAGS to look for the detail timing.
+    // get 3D mode's timing need refine!!!
+    QueryModeFlags.IsInterLaced = (pGetModeTiming->pMode->InterlaceProgressiveCaps & 0x2) ? 1 : 0;
+    QueryModeFlags.IsYCC420Mode = pGetModeTiming->pMode->isSupportYCbCr420;
+    QueryModeFlags.Is3DVideoMode = 0;
+
 
     // 2. Get detail timing
     cbMode_GetHVTiming(pcbe,
-                       pDestModeParams->XRes,
-                       pDestModeParams->YRes,
-                       pDestModeParams->RefreshRate,
-                       pDestModeParams->InterlaceFlag,
+                       pGetModeTiming->pMode->XRes,
+                       pGetModeTiming->pMode->YRes,
+                       pGetModeTiming->pMode->RefreshRate,
+                       QueryModeFlags,
                        pGetModeTiming->DeviceId,
                        pTiming);
 
     Status = CBIOS_OK;
 
 END:
-    if(pDestModeParams != CBIOS_NULL)
-    {
-        cb_FreePool(pDestModeParams);
-        pDestModeParams = CBIOS_NULL;
-    }
 
     return Status;
 }
@@ -245,7 +239,7 @@ CBIOS_STATUS cbDevGetModeFromReg(PCBIOS_VOID pvcbe, PCBIOS_DEVICE_COMMON pDevCom
     pModeParams->DestModeParams.XRes = timing_reg.XRes;
     pModeParams->DestModeParams.YRes = timing_reg.YRes;
     pModeParams->DestModeParams.RefreshRate = timing_reg.RefreshRate;
-    pModeParams->DestModeParams.InterlaceFlag = (flags.IsInterlace == 0) ? 0 : 1;
+    pModeParams->DestModeParams.InterlaceFlag = flags.IsInterlace;
 
     cb_memcpy(&(pModeParams->DetailedTiming), &timing_reg, sizeof(CBIOS_TIMING_ATTRIB));
     return csRet;
@@ -470,10 +464,8 @@ CBIOS_STATUS cbDevQueryMonitorAttribute(PCBIOS_VOID pvcbe, PCBIOS_DEVICE_COMMON 
     // get monitor screen image size
     pMonitorAttribute->MonitorHorSize = pDevCommon->EdidStruct.Attribute.MonitorHorSize;
     pMonitorAttribute->MonitorVerSize = pDevCommon->EdidStruct.Attribute.MonitorVerSize;
-    if (cbEDIDModule_IsEDIDValid(pDevCommon->EdidData))
-    {
-        cbEDIDModule_GetMonitorID(pDevCommon->EdidData, pMonitorAttribute->MonitorID);
-    }
+
+    cb_memcpy(pMonitorAttribute->MonitorID, pDevCommon->EdidStruct.Attribute.MonitorID, 8);
 
     /*
     ** 2. get special monitor attributes
@@ -917,4 +909,74 @@ CBIOS_STATUS  cbDevDPHandleIrq(PCBIOS_VOID pvcbe, PCBIOS_DEVICE_COMMON pDevCommo
 CBIOS_STATUS cbDevDPGetCustomizedTiming(PCBIOS_VOID pvcbe, PCBIOS_DEVICE_COMMON pDevCommon, PCBIOS_DP_CUSTOMIZED_TIMING pDPCustomizedTiming)
 {
     return cbDPPort_GetCustomizedTiming(pvcbe, pDevCommon, pDPCustomizedTiming);
+}
+
+CBIOS_U8 cbDevHDACGetCAValue(PCBIOS_VOID pvcbe, CBIOS_ACTIVE_TYPE DeviceType)
+{
+    PCBIOS_EXTENSION_COMMON pcbe = (PCBIOS_EXTENSION_COMMON)pvcbe;
+    CBIOS_U8 CA_Value = 0;
+    PCBIOS_DEVICE_COMMON pDevCommon = cbGetDeviceCommon(&pcbe->DeviceMgr, DeviceType);
+    PCBIOS_MONITOR_MISC_ATTRIB pMonitorAttrib = &(pDevCommon->EdidStruct.Attribute);
+
+    if(pMonitorAttrib->IsCEA861Monitor)
+    {
+        // CEA-861-D 7.5.3 Speaker Allocation Data Block
+        // --------------------------------------------------------------
+        //   Bit:  |  7  |  6   |  5   |  4   |  3   |  2  |  1  |  0   |
+        // --------------------------------------------------------------
+        //   Byte1 F17=0 RLC/RRC FLC/FRC  RC   RL/RR   FC    LFE   FL/FR
+        // --------------------------------------------------------------
+        if(pMonitorAttrib->SpeakerAllocationData & 0x02)       // Bit1 LFE = 1, Lower Frequency Effect
+        {
+            CA_Value |= BIT0;
+        }
+
+        if(pMonitorAttrib->SpeakerAllocationData & 0x04)       // Bit2 FC = 1, Front Center
+        {
+            CA_Value |= BIT1;
+        }
+
+        if((pMonitorAttrib->SpeakerAllocationData & 0x60) == 0x00) // Bit6 RLC/RRC = 0, Bit5 FLC/FRC = 0
+        {
+            if(pMonitorAttrib->SpeakerAllocationData & 0x10)   // Bit4 RC = 1, Rear Center
+            {
+                CA_Value |= BIT2;
+            }
+
+            if(pMonitorAttrib->SpeakerAllocationData & 0x08)   // Bit3 RL/RR = 1, Rear Left/Rear Right
+            {
+                CA_Value |= BIT3;
+            }
+        }
+
+        if(pMonitorAttrib->SpeakerAllocationData & 0x40)      // Bit6 RLC/RRC = 1, Rear Left Center/Rear Right Center
+        {
+            if(pMonitorAttrib->SpeakerAllocationData & 0x08)   // Bit3 RL/RR = 1, Rear Left/Rear Right
+            {
+                CA_Value |= BIT4;
+            }
+        }
+
+        if(pMonitorAttrib->SpeakerAllocationData & 0x20)       // Bit5 FLC/FRC = 1, Front Left Center/Front Right Center
+        {
+            CA_Value |= BIT4;
+
+            if((pMonitorAttrib->SpeakerAllocationData & 0x18) == 0x00) // Bit4 RC = 0, Bit3 RL/RR = 0
+            {
+                CA_Value |= BIT2;
+            }
+
+            if(pMonitorAttrib->SpeakerAllocationData & 0x10)      // Bit4 RC = 1, Rear Center
+            {
+                CA_Value |= BIT3;
+            }
+
+            if(pMonitorAttrib->SpeakerAllocationData & 0x08)      // Bit3 RL/RR = 1, Rear Left/Rear Right
+            {
+                CA_Value |= (BIT2 | BIT3);
+            }
+        }
+    }
+
+    return CA_Value;
 }

@@ -49,7 +49,7 @@ typedef struct _heap
     int                   id;
     unsigned long long    size;
     unsigned long long    start;
-    unsigned int          alignment;
+    unsigned long long    alignment;
     list_head_t     free;
     list_head_t     inuse;
 
@@ -57,9 +57,9 @@ typedef struct _heap
 } heap_t;
 
 
-int  heap_init(heap_t *heap, int id, unsigned long long start, unsigned long long size, unsigned int alignment);
+int  heap_init(heap_t *heap, int id, unsigned long long start, unsigned long long size, unsigned long long alignment);
 void heap_destroy(heap_t *heap);
-list_node_t * heap_allocate(heap_t *heap, unsigned int size, unsigned int alignment, unsigned int direction);
+list_node_t * heap_allocate(heap_t *heap, unsigned long long size, unsigned long long alignment, unsigned int direction);
 void heap_release(heap_t *heap, list_node_t *list_node);
 void heap_dump(heap_t *heap);
 

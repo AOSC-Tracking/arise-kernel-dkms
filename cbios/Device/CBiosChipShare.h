@@ -42,6 +42,7 @@
 #include "Port/CBiosDP.h"
 #include "../Hw/HwInterface/CBiosHwInterface.h"
 #include "../Hw/HwBlock/CBiosDIU_CSC.h"
+#include "../Hw/Arise/CBiosFlash_Arise.h"
 
 
 #define CBIOS_NOIGAENCODERINDEX                       0xFF
@@ -199,6 +200,8 @@ typedef struct _CBIOS_EXTENSION_COMMON
     CBIOS_U8     SliceNum;
     CBIOS_U32    FwVersion;
     CBIOS_UCHAR  FwName[10];
+    CBIOS_BOOL   bSzwCustomer;
+    CBIOS_BOOL   bYTCustomer;
 
     /* data tables */
     PCBIOS_HDMI_FORMAT_MTX pHDMIFormatTable;
@@ -279,7 +282,7 @@ typedef union _GPIO_REGISTER
 
 //************************* CBios sw utility functions ***************************//
 CBIOS_BOOL cbCalcCustomizedTiming(PCBIOS_EXTENSION_COMMON pcbe, CBIOS_U32 XRes, CBIOS_U32 YRes, CBIOS_U32 RefreshRate, PCBIOS_TIMING_ATTRIB pTimingReg);
-CBIOS_VOID cbConvertEdidTimingToTableTiming(PCBIOS_EXTENSION_COMMON pcbe, CBIOS_MODE_INFO_EXT* pEDIDDetailTiming, PCBIOS_TIMING_ATTRIB pTimingReg);
+CBIOS_VOID cbConvertEdidTimingToTableTiming(PCBIOS_EXTENSION_COMMON pcbe, CBIOS_DETAILED_TIMING_INFO* pEDIDDetailTiming, PCBIOS_TIMING_ATTRIB pTimingReg);
 CBIOS_U32  cbConvertCBiosDevBit2VBiosDevBit(CBIOS_U32 CBiosDevices);
 CBIOS_U32  cbConvertVBiosDevBit2CBiosDevBit(CBIOS_U32 VBiosDevices);
 CBIOS_U16  cbCalcRefreshRate(CBIOS_U32 PixelClock, CBIOS_U16 HActive, CBIOS_U16 HBlank, CBIOS_U16 VActive, CBIOS_U16 VBlank);
@@ -294,7 +297,8 @@ CBIOS_BOOL cbCECAllocateLogicalAddr(PCBIOS_VOID pvcbe, CBIOS_CEC_INDEX CECIndex)
 CBIOS_U32  cbConvertDeviceBit2Index(CBIOS_U32 DeviceBit);
 CBIOS_U8   cbGetBitsNum(CBIOS_U32 N);
 CBIOS_U32  cbGetLastBitIndex(CBIOS_U32 i);
-CBIOS_VOID cbDumpBuffer(PCBIOS_EXTENSION_COMMON pcbe, CBIOS_U8 Buffer[], CBIOS_U32 ulLen);
+CBIOS_U8   cbGetCheckSum(CBIOS_U8* pByte, CBIOS_U32 uLength);
+CBIOS_VOID cbDumpBuffer(PCBIOS_EXTENSION_COMMON pcbe, CBIOS_U8 *Buffer, CBIOS_U32 ulLen);
 CBIOS_BOOL cbIsSameMonitor(CBIOS_U8 *pCurDeviceEDID, CBIOS_U8 *pMonitorID);
 CBIOS_BOOL cbPrintU8String(CBIOS_U8 *Src,CBIOS_U32 Len,CBIOS_U16 Start);
 CBIOS_BOOL cbPrintU32String(CBIOS_U32 *Src,CBIOS_U32 Len,CBIOS_U16 Start);

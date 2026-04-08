@@ -43,7 +43,8 @@ typedef struct _irq_chip_funcs
     int (*get_interrupt_mask)(disp_info_t* disp_info);
 }irq_chip_funcs_t;
 
-extern irq_chip_funcs_t irq_chip_funcs;
+extern irq_chip_funcs_t irq_e3k_chip_funcs;
+extern irq_chip_funcs_t irq_hp_chip_funcs;
 
 #if DRM_VERSION_CODE >= KERNEL_VERSION(5, 7, 0)
 u32 gf_get_vblank_counter(struct drm_crtc *crtc);

@@ -64,6 +64,7 @@
 void vidsch_dump_debugbus_label(adapter_t *adapter, struct os_printer *p)
 {
     unsigned char  debug_bus_label[256];
+    unsigned int is_hp = (adapter->bus_config.revision_id == 0x10) ? 1: 0;
 
     gf_memset(debug_bus_label, 0, sizeof(debug_bus_label));
     gf_vsprintf(debug_bus_label, "OS: linux\n");
@@ -77,6 +78,10 @@ void vidsch_dump_debugbus_label(adapter_t *adapter, struct os_printer *p)
     if(adapter->chip_id < CHIP_ARISE1020)
     {
         gf_vsprintf(debug_bus_label, "Project: ARISE 10C0\n");
+    }
+    else if (is_hp)
+    {
+        gf_vsprintf(debug_bus_label, "Project: Huangpu\n");
     }
     else if (adapter->chip_id == CHIP_ARISE1020)
     {
@@ -98,6 +103,7 @@ void vidsch_display_debugbus_info_e3k(adapter_t *adapter, struct os_printer *p, 
 {
     unsigned char  sr1a = 0;
     unsigned char  debug_bus_buffer[256];
+    unsigned int is_hp = (adapter->bus_config.revision_id == 0x10) ? 1: 0;
 
     vidsch_dump_debugbus_label(adapter, p);
 
@@ -107,29 +113,6 @@ void vidsch_display_debugbus_info_e3k(adapter_t *adapter, struct os_printer *p, 
     //enable read debug bus from diu
     sr1a = gf_read8(adapter->mmio + 0x861a);
     gf_write8(adapter->mmio + 0x861a, sr1a | 0x10);
-
-    if(video)
-    {
-        int k = 0;
-        int i = 0;
-        unsigned char * video_mmio = NULL;
-        for(k = 0; k <= 0x1ff; k++)
-        {
-            video_mmio = adapter->mmio + 0x4C000 + k*4;
-            i = gf_read32(video_mmio);
-            gf_vsprintf(debug_bus_buffer,"%08x: %08x\n", video_mmio, i);
-            gf_info(debug_bus_buffer);
-        }
-
-        for(k = 0; k <= 0x1ff; k++)
-        {
-            video_mmio = adapter->mmio + 0x4A000 + k*4;
-            i = gf_read32(video_mmio);
-            gf_vsprintf(debug_bus_buffer,"%08x: %08x\n", video_mmio, i);
-            gf_info(debug_bus_buffer);
-        }
-
-    }
 
     //3D
     {
@@ -142,8 +125,16 @@ void vidsch_display_debugbus_info_e3k(adapter_t *adapter, struct os_printer *p, 
         {
             case CHIP_ARISE1020:
             case CHIP_ARISE1010:
-                debugbus_info = (debug_bus_info *)debug_bus_info_Arise1020;
-                debugbus_info_block_size = sizeof(debug_bus_info_Arise1020) / sizeof(debug_bus_info);
+                if (is_hp)
+                {
+                    debugbus_info = (debug_bus_info *)debug_bus_info_HuangPu;
+                    debugbus_info_block_size = sizeof(debug_bus_info_HuangPu) / sizeof(debug_bus_info);
+                }
+                else
+                {
+                    debugbus_info = (debug_bus_info *)debug_bus_info_Arise1020;
+                    debugbus_info_block_size = sizeof(debug_bus_info_Arise1020) / sizeof(debug_bus_info);
+                }
                 break;
             case CHIP_ARISE2030:
             case CHIP_ARISE2020:
@@ -155,6 +146,15 @@ void vidsch_display_debugbus_info_e3k(adapter_t *adapter, struct os_printer *p, 
                 debugbus_info = (debug_bus_info *)debug_bus_info_E3K;
                 debugbus_info_block_size = sizeof(debug_bus_info_E3K) / sizeof(debug_bus_info);
                 break;
+        }
+
+
+        if (is_hp)
+        {
+            Reg_Pmu_Miu_Hdr_Cfg_Axi_Cnt_En reg_Pmu_Miu_Hdr_Cfg_Axi_Cnt_En = { 0 };
+            reg_Pmu_Miu_Hdr_Cfg_Axi_Cnt_En.reg.Pmu_Miu_Hdr_Cfg_Axi_Cnt_En = 1;
+
+            gf_write32(adapter->mmio + PMU_BASE + Reg_Pmu_Miu_Hdr_Cfg_Axi_Cnt_En_Offset * 4, reg_Pmu_Miu_Hdr_Cfg_Axi_Cnt_En.uint);
         }
 
         gf_info("debugbus_info_block_size %d\n", debugbus_info_block_size);
@@ -232,7 +232,51 @@ void vidsch_display_debugbus_info_e3k(adapter_t *adapter, struct os_printer *p, 
     }
 
     gf_vsprintf(debug_bus_buffer, "~~~~~~~~~~~~~~end of debug bus info~~~~~~~~~~~~~~");
+
     PRINT_DEBUG_BUS_INFO(adapter, p, debug_bus_buffer);
+
+    // mmio dump must come after the debug-bus dump,
+    // as engine hang can stall mmio reads.
+    if(video)
+    {
+        int k = 0;
+        int i = 0;
+        unsigned char * video_mmio = NULL;
+
+        gf_vsprintf(debug_bus_buffer, "~~~~~~~~~~~~~~video mmio info begin~~~~~~~~~~~~~~\n");
+        gf_info(debug_bus_buffer);
+        for(k = 0; k <= 0x1ff; k++)
+        {
+            video_mmio = adapter->mmio + 0x4C000 + k*4;
+            i = gf_read32(video_mmio);
+            gf_vsprintf(debug_bus_buffer,"%08x: %08x\n", video_mmio, i);
+            gf_info(debug_bus_buffer);
+        }
+
+        for(k = 0; k <= 0x1ff; k++)
+        {
+            video_mmio = adapter->mmio + 0x4A000 + k*4;
+            i = gf_read32(video_mmio);
+            gf_vsprintf(debug_bus_buffer,"%08x: %08x\n", video_mmio, i);
+            gf_info(debug_bus_buffer);
+        }
+
+        // dump vpp mmio info
+        for(k = 0; k <= 0x118; k++)
+        {
+            video_mmio = adapter->mmio + MMIO_VPP_START_ADDRESS + k*4;
+            i = gf_read32(video_mmio);
+            gf_vsprintf(debug_bus_buffer,"%08x: %08x\n", video_mmio, i);
+            gf_info(debug_bus_buffer);
+        }
+        gf_vsprintf(debug_bus_buffer, "~~~~~~~~~~~~~~video mmio info end~~~~~~~~~~~~~~\n");
+        gf_info(debug_bus_buffer);
+    }
+
+    if (is_hp)
+    {
+        gf_write32(adapter->mmio + PMU_BASE + Reg_Pmu_Miu_Hdr_Cfg_Axi_Cnt_En_Offset * 4, 0);// to save powoer after debugbus dump
+    }
 }
 
 void vidsch_dump_hang_info_e3k(vidsch_mgr_t *sch_mgr)

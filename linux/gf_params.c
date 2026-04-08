@@ -37,9 +37,12 @@ struct gf_params gf_modparams __read_mostly = {
     .gf_recovery_enable = 1,
     .gf_hang_dump = 0,            /*0-disable, 1-pre hang, 2-post hang, 3-duplicate hang */
     .gf_run_on_qt = 0,
+    .gf_cbios_flags = 0,
     .gf_flag_buffer_verify = 1,  /*0 - disable, 1 - enable */
 
     .gf_vesa_tempbuffer_enable = 0, /* control wether reserve memory during boot */
+
+    .gf_virtual_display = 0, /* virtual display for headless boards */
 
     .miu_channel_size = 0,   /* 0/1/2 for 256B/512B/1kb Swizzle */
     .gf_backdoor_enable = 1,
@@ -62,6 +65,7 @@ struct gf_params gf_modparams __read_mostly = {
 gf_param_named(gf_fb, int, 0600, "enable gf drm fb 0=disable, 1=enable");
 gf_param_named(gf_fb_mode, charp, 0600, "The fb mode, like string 1920x1080@60");
 gf_param_named(gf_vesa_tempbuffer_enable, int, 0444, "control wether reserve memory during boot");
+gf_param_named(gf_virtual_display, int, 0444, "set to enable virutal display feature");
 gf_param_named(gf_pwm_mode, int, 0444,"control power mode");
 gf_param_named(gf_dfs_mode, int, 0444, "control of dfs");
 gf_param_named(gf_worker_thread_enable, int, 0444, "enable work thread to submit");
@@ -69,6 +73,7 @@ gf_param_named(gf_recovery_enable, int, 0444, "enable recovery");
 gf_param_named(gf_hang_dump, int, 0444, "0-disable, 1-pre hang, 2-post hang, 3-duplicate hang");
 gf_param_named(gf_flag_buffer_verify, int, 0444, "");
 gf_param_named(gf_run_on_qt, int, 0444, "");
+gf_param_named(gf_cbios_flags, int, 0600, "");
 gf_param_named(miu_channel_size, int, 0444, "0/1/2 for 256B/512B/1kb Swizzle");
 gf_param_named(gf_backdoor_enable, int, 0444, "enable backdoor");
 gf_param_named(chip_slice_mask, int, 0444, "0x001 ~ 0xfff or 0, if none zero set, driver will use this setting, otherwise use value from bios");

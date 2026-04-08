@@ -690,6 +690,13 @@ void vidsch_restore(adapter_t *adapter)
     }
 }
 
+void vidsch_selftest(adapter_t *adapter)
+{
+    vidmm_mgr_t *mm_mgr = adapter->mm_mgr;
+
+    mm_mgr->chip_func->selftest(adapter);
+}
+
 void vidsch_dvfs_power_flag_reset(adapter_t *adapter)
 {
     vidsch_mgr_t *vidsch = NULL;

@@ -102,6 +102,10 @@ bool gf_plane_format_mod_supported(struct drm_plane *plane, uint32_t format,
                                    uint64_t modifier);
 #endif
 
+#if defined(CONFIG_DRM_PANIC)
+int gf_plane_get_scanout_buffer(struct drm_plane *plane, struct drm_scanout_buffer *sb);
+#endif
+
 #else
 
 int gf_update_plane(struct drm_plane *plane, struct drm_crtc *crtc,

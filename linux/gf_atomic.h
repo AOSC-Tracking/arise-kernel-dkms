@@ -56,6 +56,12 @@ int gf_connector_atomic_get_property(struct drm_connector *connector,
                                      struct drm_property *property,
                                      uint64_t *val);
 
+#if DRM_VERSION_CODE >= KERNEL_VERSION(5, 3, 0)
+int gf_connector_atomic_check(struct drm_connector *connector, struct drm_atomic_state *state);
+#elif DRM_VERSION_CODE >= KERNEL_VERSION(4, 12, 0)
+int gf_connector_atomic_check(struct drm_connector *connector, struct drm_connector_state *state);
+#endif
+
 void gf_connector_destroy_state(struct drm_connector *connector, struct drm_connector_state *state);
 
 void gf_atomic_helper_commit_tail(struct drm_atomic_state *old_state);

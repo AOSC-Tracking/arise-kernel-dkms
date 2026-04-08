@@ -65,7 +65,7 @@ static void heap_add_node_to_list(heap_t *heap, list_head_t *list, list_node_t *
     list->num++;
 }
 
-int heap_init(heap_t *heap, int id, unsigned long long start, unsigned long long size, unsigned int alignment)
+int heap_init(heap_t *heap, int id, unsigned long long start, unsigned long long size, unsigned long long alignment)
 {
     list_node_t *new_node = NULL;
     int result = S_OK;
@@ -131,17 +131,17 @@ void heap_destroy(heap_t *heap)
 }
 
 //heap allocate will not large than 4G
-list_node_t *heap_allocate(heap_t *heap, unsigned int size, unsigned int alignment, unsigned int direction)
+list_node_t *heap_allocate(heap_t *heap, unsigned long long size, unsigned long long alignment, unsigned int direction)
 {
     list_node_t *new_node  = NULL;
     list_node_t *free_node = NULL;
 
-    unsigned long long start_alignment = util_max(alignment, heap->alignment);
-    unsigned long long aligned_mask    = ~(start_alignment - 1); //set to long long int to avoid offset aligh cut of 64bits to 32bits
-    unsigned int  aligned_size   = util_align(size, heap->alignment);
+    unsigned long long start_alignment  = util_max(alignment, heap->alignment);
+    unsigned long long aligned_mask     = ~(start_alignment - 1);   //set to long long int to avoid offset aligh cut of 64bits to 32bits
+    unsigned long long aligned_size     = util_align(size, heap->alignment);
     unsigned long long aligned_offset;
-    unsigned int  alloc_size     = 0;                            // the size of the node, actually allocated size.
-    unsigned long long alloc_offset;                          // the offset of the node, actually offset.
+    unsigned long long alloc_size       = 0;                        // the size of the node, actually allocated size.
+    unsigned long long alloc_offset;                                // the offset of the node, actually offset.
 
     int found = FALSE;
 

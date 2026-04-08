@@ -57,7 +57,8 @@ cbios-objs := \
     Hw/HwBlock/CBiosDIU_CSC.o \
     Hw/HwBlock/CBiosPHY_DP.o \
     Hw/Arise/CBios_Arise.o          \
-    Hw/Arise/CBiosVCP_Arise.o
+    Hw/Arise/CBiosVCP_Arise.o \
+    Hw/Arise/CBiosFlash_Arise.o
 
 $(DRIVER_NAME)-objs += $(addprefix cbios/, $(cbios-objs))
 

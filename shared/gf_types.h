@@ -564,6 +564,24 @@ typedef struct
     };
 } gf_cil2_misc_t;
 
+typedef enum
+{
+    GF_FLASH_NONE,
+    GF_FLASH_READ,
+    GF_FLASH_WRITE,
+    GF_FLASH_GET_START_ADDR,
+    GF_FLASH_GET_MAX_SIZE,
+} gf_flash_op_t;
+
+typedef struct
+{
+    unsigned int op;
+    unsigned int addr;
+    unsigned int size;
+    unsigned int pad;
+    gf_ptr64_t   buf;
+} gf_flash_param_t;
+
 #define GF_DEBUGFS_GEM_ENABLE  0x1
 #define GF_DEBUGFS_FAKE_HANG   0x2
 

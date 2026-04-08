@@ -442,33 +442,55 @@ int  cm_save(adapter_t *adapter, int need_save_memory)
             {
                 list_for_each_entry(allocation, &segment->pagable_resident_list[priority], list_item)
                 {
-                    allocation_cnt++;
-
                     result = vidmm_save_allocation(allocation->device, allocation);
                     if (result)
-                    {
-                         return result;
-                    }
+                        goto unsave;
+
+                    allocation_cnt++;
                 }
             }
 
             list_for_each_entry(allocation, &segment->unpagable_resident_list, list_item)
             {
-                allocation_cnt++;
-
                 result = vidmm_save_allocation(allocation->device, allocation);
                 if (result)
-                {
-                     return result;
-                }
+                    goto unsave;
+
+                allocation_cnt++;
             }
         }
     }
 
-
     ts_leave = gf_get_current_time();
 
     gf_info("%s() total cost %llums, allocation_cnt-%d\n", __func__, ts_leave -ts_enter, allocation_cnt);
+
+    return result;
+
+unsave:
+    gf_error("%s() saved %d allocation, abort save because of error\n", __func__, allocation_cnt);
+
+    for (idx = 1; idx < mm_mgr->segment_cnt; idx++)
+    {
+        segment = &mm_mgr->segment[idx];
+        if (!segment->flags.require_system_pages)
+        {
+            vidmm_allocation_t *allocation = NULL;
+
+            for (priority = PDISCARD; priority < PALL; priority++)
+            {
+                list_for_each_entry(allocation, &segment->pagable_resident_list[priority], list_item)
+                {
+                    vidmm_unsave_allocation(allocation->device, allocation);
+                }
+            }
+
+            list_for_each_entry(allocation, &segment->unpagable_resident_list, list_item)
+            {
+                vidmm_unsave_allocation(allocation->device, allocation);
+            }
+        }
+    }
 
     return result;
 }

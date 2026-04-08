@@ -45,6 +45,8 @@
 #endif
 #endif
 #include <linux/irq.h>
+#include <linux/suspend.h>
+#include <linux/cpu.h>
 
 #if DRM_VERSION_CODE >= KERNEL_VERSION(6, 2, 0)
 #if DRM_VERSION_CODE < KERNEL_VERSION(6, 11, 0)
@@ -108,65 +110,17 @@ static struct pci_device_id pciidlist[] =
     {0x6766, 0x3D03, PCI_ANY_ID, PCI_ANY_ID, 0, 0, (kernel_ulong_t)&gf_e3k_info}, //arise1040
     {0x6766, 0x3D04, PCI_ANY_ID, PCI_ANY_ID, 0, 0, (kernel_ulong_t)&gf_e3k_info}, //arise1010
     {0x6766, 0x3D06, PCI_ANY_ID, PCI_ANY_ID, 0, 0, (kernel_ulong_t)&gf_e3k_info}, //arise10c0t
-    {0x6766, 0x3D07, PCI_ANY_ID, PCI_ANY_ID, 0, 0, (kernel_ulong_t)&gf_e3k_info},
-    {0x6766, 0x3D08, PCI_ANY_ID, PCI_ANY_ID, 0, 0, (kernel_ulong_t)&gf_e3k_info},
+    {0x6766, 0x3D07, PCI_ANY_ID, PCI_ANY_ID, 0, 0, (kernel_ulong_t)&gf_e3k_info}, //arise2030
+    {0x6766, 0x3D08, PCI_ANY_ID, PCI_ANY_ID, 0, 0, (kernel_ulong_t)&gf_e3k_info}, //arise2020
     {0x6766, 0x3D0E, PCI_ANY_ID, PCI_ANY_ID, 0, 0, (kernel_ulong_t)&gf_e3k_info}, //arise10D0
+    //{0x6766, 0x3D09, PCI_ANY_ID, PCI_ANY_ID, 0, 0, (kernel_ulong_t)&gf_e3k_info}, //arise1020C
+    //{0x6766, 0x3D0A, PCI_ANY_ID, PCI_ANY_ID, 0, 0, (kernel_ulong_t)&gf_e3k_info}, //arise1010C
     {0, 0, 0}
 };
 
 MODULE_DEVICE_TABLE(pci, pciidlist);
 
 static struct pci_driver gf_driver;
-
-#if 0
-static int gf_pcie_probe(struct pci_dev *pdev, const struct pci_device_id *ent)
-{
-    gf_card_t    *gf = &gf_cards[num_probed_card++];
-    int           ret  = 0;
-
-    gf_memset(gf, 0, sizeof(gf_card_t));
-
-    pci_set_drvdata(pdev, gf);
-
-    gf_card_pre_init(gf, pdev);
-
-    ret = pci_request_regions(pdev, gf_driver.name);
-    if(ret)
-    {
-        gf_error("pci_request_regions() failed. ret:%x.\n", ret);
-    }
-
-    ret = pci_enable_device(pdev);
-    if(ret)
-    {
-        gf_error("pci_enable_device() failed. ret:%x.\n", ret);
-    }
-
-    pci_set_master(pdev);
-
-    /*don't use the vga arbiter*/
-#if defined(CONFIG_VGA_ARB)
-    vga_set_legacy_decoding(pdev, VGA_RSRC_NONE);
-#endif
-
-    ret = gf_card_init(gf, pdev);
-
-    return ret;
-}
-
-static void gf_pcie_shutdown(struct pci_dev *pdev)
-{
-    gf_card_t *gf = pci_get_drvdata(pdev);
-
-    if(gf->gfb_enable)
-    {
-#ifdef CONFIG_FB
-        gf_fb_shutdown(gf);
-#endif
-    }
-
-}
-#endif
 
 static int __gf_drm_suspend(struct drm_device *dev, pm_message_t state, bool fbcon)
 {
@@ -192,7 +146,7 @@ static int __gf_drm_suspend(struct drm_device *dev, pm_message_t state, bool fbc
     if (ret)
     {
         gf_error("drm suspend: save state failed.\n");
-        return ret;
+        return -EBUSY;
     }
 
     /* disable IRQ */
@@ -313,6 +267,12 @@ static __inline__ int gf_backdoor_available(void)
     return (boot_cpu_data.x86_vendor == X86_VENDOR_CENTAUR || boot_cpu_data.x86_vendor == 10) &&
            boot_cpu_data.x86_model == 59;
 #endif
+#elif defined(__aarch64__)
+    unsigned long long cpuid = read_cpuid_id();
+    // disable backdoor on ft d3000 to prevent vpp hang
+    if (cpuid == 0x700f8620 /*MIDR_PHYTIUM_D3000*/)
+        return FALSE;
+    return TRUE;
 #else
     return TRUE;
 #endif
@@ -326,6 +286,7 @@ static __inline__ void gf_init_adapter_info_by_params(struct krnl_adapter_init_i
     info->gf_recovery_enable            = p->gf_recovery_enable;
     info->gf_hang_dump                  = p->gf_hang_dump;
     info->gf_run_on_qt                  = p->gf_run_on_qt;
+    info->gf_virtual_display            = p->gf_virtual_display;
     info->gf_flag_buffer_verify         = p->gf_flag_buffer_verify;
     info->gf_vesa_tempbuffer_enable     = p->gf_vesa_tempbuffer_enable;
 
@@ -403,6 +364,11 @@ static int gf_kick_out_firmware_fb(struct pci_dev *pdev)
     return 0;
 }
 #endif
+
+void gf_selftest(gf_card_t *gf)
+{
+    gf_core_interface->selftest(gf->adapter);
+}
 
 #define PCI_EN_IO_SPACE     1
 static int gf_drm_load_kms(struct drm_device *dev, unsigned long flags)
@@ -499,6 +465,8 @@ static int gf_drm_load_kms(struct drm_device *dev, unsigned long flags)
     gf_fbdev_init(gf);
 #endif
 
+    gf_selftest(gf);
+
     if (gf->runtime_pm)
     {
         gf_rpm_set_driver_flags(dev->dev);
@@ -591,6 +559,7 @@ static void gf_drm_postclose(struct drm_device *dev, struct drm_file *file)
     gf_rpm_put_autosuspend(dev->dev);
 }
 
+#if DRM_VERSION_CODE < KERNEL_VERSION(6, 12, 0)
 static void  gf_drm_last_close(struct drm_device* dev)
 {
 #if DRM_VERSION_CODE < KERNEL_VERSION(4, 19, 0)
@@ -600,6 +569,7 @@ static void  gf_drm_last_close(struct drm_device* dev)
     drm_fb_helper_lastclose(dev);
 #endif
 }
+#endif
 
 #if DRM_VERSION_CODE < KERNEL_VERSION(4,11,0)
 static int gf_drm_device_is_agp(struct drm_device * dev)
@@ -903,6 +873,17 @@ static int gf_pcie_probe(struct pci_dev *pdev, const struct pci_device_id *ent)
         pm_vt_switch_required(dev->fb_helper->fbdev->dev, false);
     }
 #endif
+    //suspend without moniter/resume with monitor, vt_switch state mismatch, disable vt switch
+#if DRM_VERSION_CODE < KERNEL_VERSION(6, 2, 0)
+    if (!(dev->fb_helper && dev->fb_helper->fbdev &&
+        dev->fb_helper->fbdev->dev))
+#else
+    if (!(dev->fb_helper && dev->fb_helper->info &&
+        dev->fb_helper->info->dev))
+#endif
+    {
+        pm_set_vt_switch(0);
+    }
 
     return 0;
 
@@ -961,14 +942,14 @@ static void __exit gf_pcie_cleanup(struct pci_dev *pdev)
 static int gf_pmops_suspend(struct device *dev)
 {
     struct pci_dev *pdev = to_pci_dev(dev);
-
+    int ret = 0;
     gf_info("pci device(vendor:0x%X, device:0x%X) pm suspend\n", pdev->vendor, pdev->device);
 
 #if DRM_VERSION_CODE >= KERNEL_VERSION(4,0,0)
-    gf_drm_suspend(pci_get_drvdata(pdev), PMSG_SUSPEND);
+    ret = gf_drm_suspend(pci_get_drvdata(pdev), PMSG_SUSPEND);
 #endif
 
-    return 0;
+    return ret;
 }
 static int gf_pmops_resume(struct device *dev)
 {
@@ -995,14 +976,14 @@ static int gf_pmops_resume(struct device *dev)
 static int gf_pmops_freeze(struct device *dev)
 {
     struct pci_dev *pdev = to_pci_dev(dev);
-
+    int ret = 0;
     gf_info("pci device(vendor:0x%X, device:0x%X) pm freeze\n", pdev->vendor, pdev->device);
 
 #if DRM_VERSION_CODE >= KERNEL_VERSION(4,0,0)
-    gf_drm_suspend(pci_get_drvdata(pdev), PMSG_FREEZE);
+    ret = gf_drm_suspend(pci_get_drvdata(pdev), PMSG_FREEZE);
 #endif
 
-    return 0;
+    return ret;
 }
 
 static int gf_pmops_thaw(struct device *dev)

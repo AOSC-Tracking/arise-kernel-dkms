@@ -77,7 +77,7 @@ typedef PCBIOS_VOID   (*CALLBACK_cbMemSet)(PCBIOS_VOID pBuf, CBIOS_S32 value, CB
 typedef PCBIOS_VOID   (*CALLBACK_cbMemCpy)(PCBIOS_VOID pBuf1, PCBIOS_VOID pBuf2, CBIOS_U32 length);
 typedef CBIOS_S32     (*CALLBACK_cbMemCmp)(PCBIOS_VOID pBuf1, PCBIOS_VOID pBuf2, CBIOS_U32 length);
 typedef CBIOS_U64     (*CALLBACK_cbDoDiv)(CBIOS_U64 a, CBIOS_U64 b);
-typedef CBIOS_VOID  (*CALLBACK_cbVDbgPrint)(CBIOS_BOOL  bEnablePrint, CBIOS_U32 PrintLevel, PCBIOS_UCHAR PrefixStr, PCBIOS_UCHAR DbgMsg, ...);
+typedef CBIOS_VOID  (*CALLBACK_cbVDbgPrint)(CBIOS_BOOL  bEnablePrint, CBIOS_U32 PrintLevel, PCBIOS_UCHAR PrefixStr, PCBIOS_CHAR DbgMsg, ...);
 
 extern CALLBACK_cbVDbgPrint              cbVDbgPrint;
 

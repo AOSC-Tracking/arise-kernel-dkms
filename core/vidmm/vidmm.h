@@ -350,6 +350,7 @@ extern void vidmm_destroy(adapter_t *adapter);
 extern int vidmm_save(adapter_t *adapter);
 extern void vidmm_restore(adapter_t *adapter);
 extern int vidmm_save_allocation(gpu_device_t *device, vidmm_allocation_t *allocation);
+extern void vidmm_unsave_allocation(gpu_device_t *device, vidmm_allocation_t *allocation);
 extern void vidmm_restore_allocation(gpu_device_t *device, vidmm_allocation_t *allocation);
 extern int  vidmm_create_allocation(gpu_device_t *device, vidmm_create_allocation_arg_t *data);
 extern void vidmm_destroy_allocation(gpu_device_t *device, vidmm_destroy_allocatin_arg_t *data);

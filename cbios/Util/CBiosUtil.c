@@ -241,7 +241,7 @@ CBIOS_BOOL cbCalcCustomizedTiming(PCBIOS_EXTENSION_COMMON pcbe,
 
 
 CBIOS_VOID cbConvertEdidTimingToTableTiming(CBIOS_IN PCBIOS_EXTENSION_COMMON pcbe,
-                                          CBIOS_IN CBIOS_MODE_INFO_EXT* pEDIDDetailTiming,
+                                          CBIOS_IN CBIOS_DETAILED_TIMING_INFO* pEDIDDetailTiming,
                                           CBIOS_OUT PCBIOS_TIMING_ATTRIB pTiming)
 {
     cb_memset(pTiming, 0, sizeof(CBIOS_TIMING_ATTRIB));
@@ -851,7 +851,19 @@ CBIOS_U32 cbGetLastBitIndex(CBIOS_U32 i)
 }
 
 
-CBIOS_VOID cbDumpBuffer(PCBIOS_EXTENSION_COMMON pcbe, CBIOS_U8 Buffer[], CBIOS_U32 ulLen)
+CBIOS_U8  cbGetCheckSum(CBIOS_U8* pByte, CBIOS_U32 uLength)
+{
+    CBIOS_U8 ByteVal=0;
+    CBIOS_U32 i;
+    for(i=0;i<uLength;i++)
+    {
+        ByteVal+=pByte[i];
+    }
+    return ByteVal;
+}
+
+
+CBIOS_VOID cbDumpBuffer(PCBIOS_EXTENSION_COMMON pcbe, CBIOS_U8 *Buffer, CBIOS_U32 ulLen)
 {
     CBIOS_U32   i;
     CBIOS_U8    ucChecksum = 0;
@@ -866,12 +878,7 @@ CBIOS_VOID cbDumpBuffer(PCBIOS_EXTENSION_COMMON pcbe, CBIOS_U8 Buffer[], CBIOS_U
             Buffer[i*16+0x0c], Buffer[i*16+0x0d], Buffer[i*16+0x0e], Buffer[i*16+0x0f]));
     }
 
-    for (i = 0; i < ulLen; i++)
-    {
-        ucChecksum += Buffer[i];
-    }
-
-    cbDebugPrint((MAKE_LEVEL(GENERIC, DEBUG), "cbDumpBuffer: checksum == 0x%02x\n", ucChecksum));
+    cbDebugPrint((MAKE_LEVEL(GENERIC, DEBUG), "cbDumpBuffer: checksum == 0x%02x\n", cbGetCheckSum(Buffer, ulLen)));
 }
 
 

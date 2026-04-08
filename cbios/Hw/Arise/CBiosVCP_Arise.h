@@ -153,7 +153,14 @@ typedef struct _VCP_INIT_DATA
     CBIOS_U32            VCP_DP1SscConfig;
     CBIOS_U32            VCP_DP2SscConfig;
     VCP_EDP_POWERCONFIG  VCP_EDPPowerConfig;
-    CBIOS_U8             RsvdByte_3[5];
+    struct
+    {
+        CBIOS_U8        VGA_CONN_TYPE;
+        CBIOS_U8        DP1_CONN_TYPE;
+        CBIOS_U8        DP2_CONN_TYPE;
+        CBIOS_U8        DP3_CONN_TYPE;
+        CBIOS_U8        DP4_CONN_TYPE;
+    };                                      // device port
 
     CBIOS_U16            VCP_BootDevPriorityOffset;
     CBIOS_U16            VCP_DVODevConfigOffset;

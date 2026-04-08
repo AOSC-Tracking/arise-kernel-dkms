@@ -143,7 +143,11 @@ static int gfb_create(struct drm_fb_helper *helper, struct drm_fb_helper_surface
         mode_cmd.height = sizes->surface_height;
         mode_cmd.pitches[0] = obj->info.pitch;
         mode_cmd.pixel_format = drm_mode_legacy_fb_format(sizes->surface_bpp, sizes->surface_depth);
+#if DRM_VERSION_CODE < KERNEL_VERSION(6, 17, 0)
         fb = __gf_framebuffer_create(dev, &mode_cmd, obj);
+#else
+        fb = __gf_framebuffer_create(dev, NULL, &mode_cmd, obj);
+#endif
         fbdev->fb = fb;
     }
     else

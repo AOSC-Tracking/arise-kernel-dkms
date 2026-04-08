@@ -1178,11 +1178,21 @@ typedef union _REG_MM82B8    //HDCP1_Control_2_Register
         CBIOS_U32    I2C_Status    :1;
         CBIOS_U32    Authentication_Protocol_Status    :2;
         CBIOS_U32    Reserved_2    :2;
-        CBIOS_U32    EFUSE_read_Address    :7;
-        CBIOS_U32    Reserved_3    :9;
+        CBIOS_U32    EFUSE_read_Address    :8;
+        CBIOS_U32    ReAuth_Wait_Sel    :3;
+        CBIOS_U32    Reserved_3    :5;
     };
 }REG_MM82B8;
 
+typedef union _REG_MM33968    //Efuse_Read_Data
+{
+    CBIOS_U32    Value;
+    struct
+    {
+        CBIOS_U32    ReAuth_Wait_Sel    :3;
+        CBIOS_U32    FRC_REG3   :29;
+    };
+}REG_MM33968;
 
 typedef union _REG_MM82BC    //Efuse_Read_Data
 {
@@ -2097,9 +2107,17 @@ typedef union _REG_MM8390    //HDAUDIO_CODEC1_Channel_Status_Bits_31:0_Register
     CBIOS_U32    Value;
     struct
     {
-        CBIOS_U32    bit_0    :1;
-        CBIOS_U32    bit_1    :1;
-        CBIOS_U32    Channel_status_31_2    :30;
+        CBIOS_U32    Use                    :1;
+        CBIOS_U32    Linear_PCM             :1;
+        CBIOS_U32    Copyright              :1;
+        CBIOS_U32    Linear_PCM_mode        :3;
+        CBIOS_U32    Channel_status_mode    :2;
+        CBIOS_U32    Category_code          :8;
+        CBIOS_U32    Source_number          :4;
+        CBIOS_U32    Channel_number         :4;
+        CBIOS_U32    Sampling_frequency     :4;
+        CBIOS_U32    Clock_accurary         :2;
+        CBIOS_U32    Channel_status_31_30   :2;
     };
 }REG_MM8390;
 
@@ -2109,7 +2127,10 @@ typedef union _REG_MM8394    //HDAUDIO_CODEC1_Channel_Status_Bits_63:32_Register
     CBIOS_U32    Value;
     struct
     {
-        CBIOS_U32    Channel_status_63_32    :32;
+        CBIOS_U32    Max_word_length                :1;
+        CBIOS_U32    Sample_word_length             :3;
+        CBIOS_U32    Original_sample_frequency      :4;
+        CBIOS_U32    Channel_status_63_7            :24;
     };
 }REG_MM8394;
 

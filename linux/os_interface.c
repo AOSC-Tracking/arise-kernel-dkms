@@ -2024,6 +2024,17 @@ int gf_mtrr_add(unsigned long start, unsigned long size)
 {
     int reg = -1;
 
+    if (size == 0)
+        return reg;
+
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(4,9,0)
+    reg = arch_io_reserve_memtype_wc(start, size);
+    if (reg)
+    {
+        gf_info("set memtype to wc failed: %d\n", reg);
+    }
+#endif
+
 #ifdef CONFIG_MTRR
 #if LINUX_VERSION_CODE < KERNEL_VERSION(4,3,0)
     reg = mtrr_add(start, size, MTRR_TYPE_WRCOMB, 1);
@@ -2044,6 +2055,9 @@ int gf_mtrr_del(int reg, unsigned long base, unsigned long size)
 {
     int err = -1;
 
+    if (size == 0)
+        return err;
+
 #ifdef CONFIG_MTRR
 #if LINUX_VERSION_CODE < KERNEL_VERSION(4,3,0)
     err =  mtrr_del(reg, base, size);
@@ -2053,6 +2067,10 @@ int gf_mtrr_del(int reg, unsigned long base, unsigned long size)
     err = 0;
 #endif
 
+#endif
+
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(4,9,0)
+    arch_io_free_memtype_wc(base, size);
 #endif
 
     return err;
@@ -2128,7 +2146,11 @@ int gf_is_own_pages(struct os_pages_memory *pages_memory)
 }
 void *gf_pages_memory_swapout(struct os_pages_memory *pages_memory)
 {
+#if LINUX_VERSION_CODE < KERNEL_VERSION(7, 0, 0)
     struct file          *file_storage = shmem_file_setup("gf gmem", pages_memory->size, 0);
+#else
+    struct file          *file_storage = shmem_file_setup("gf gmem", pages_memory->size, EMPTY_VMA_FLAGS);
+#endif
     struct address_space *file_addr_space;
     struct page          **pages;
     struct page          *src_page, *dst_page;

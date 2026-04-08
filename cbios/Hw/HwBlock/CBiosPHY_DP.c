@@ -271,13 +271,20 @@ CBIOS_VOID cbPHY_DP_DualModeOnOff(PCBIOS_VOID pvcbe, CBIOS_MODULE_INDEX DPModule
         DPEphyTxRegValue.EPHY1_SR_MAN_L2 = 0;
         DPEphyTxRegValue.EPHY1_SR_MAN_L3 = 0;
         DPEphyTxRegValue.DIU_EPHY1_AUX_DIAJ = 0;
-        if(ClockFreq > 3400000)
+        if(ClockFreq > 3400000 && !bACE)
         {
             DPEphyTxRegValue.TX_Resistance_Value = 0xF;
         }
         else
         {
             DPEphyTxRegValue.TX_Resistance_Value = 0xD;
+            if (pcbe->bYTCustomer && (pcbe->ChipID == CHIPID_ARISE2030))
+            {
+                if (DPModuleIndex == CBIOS_MODULE_INDEX2)
+                {
+                    DPEphyTxRegValue.TX_Resistance_Value = 0x8; // Just for HDMI2
+                }
+            }
         }
 
         DPEphyTxRegMask.Value = 0xFFFFFFFF;
@@ -309,6 +316,10 @@ CBIOS_VOID cbPHY_DP_DualModeOnOff(PCBIOS_VOID pvcbe, CBIOS_MODULE_INDEX DPModule
             DPEphyMiscRegValue.T1V = 1;
             DPEphyMiscRegValue.MT = 0;
             DPEphyMiscRegValue.EPHY1_TPLL_CP = 0x8;
+            if (pcbe->bYTCustomer && (pcbe->ChipID == CHIPID_ARISE2030))
+            {
+                DPEphyMiscRegValue.EPHY1_TPLL_CP = 0xF; // For HDMI1 and HDMI2
+            }
         }
         else if (ClockFreq >= 1700000)
         {
@@ -470,7 +481,7 @@ CBIOS_VOID cbPHY_DP_DualModeOnOff(PCBIOS_VOID pvcbe, CBIOS_MODULE_INDEX DPModule
             if (ClockFreq == 5940000 && (pcbe->ChipID == CHIPID_E3K || pcbe->ChipID == CHIPID_ARISE10C0T))
             {
                 DPEphyCtrlRegValue.DIAJ_L0 = 3;
-                DPEphyCtrlRegValue.DIAJ_L1 = 5;
+                DPEphyCtrlRegValue.DIAJ_L1 = 4;
             }
             else
             {
@@ -517,6 +528,13 @@ CBIOS_VOID cbPHY_DP_DualModeOnOff(PCBIOS_VOID pvcbe, CBIOS_MODULE_INDEX DPModule
         if(ClockFreq >= 3400000)
         {
             DPEphySetting2RegValue.EPHY1_TXDU_L0 = 0x3B;
+            if (pcbe->bYTCustomer && (pcbe->ChipID == CHIPID_ARISE2030))
+            {
+                if (DPModuleIndex == CBIOS_MODULE_INDEX2)
+                {
+                    DPEphySetting2RegValue.EPHY1_TXDU_L0 = 0x3C; // Just for HDMI2
+                }
+            }
             DPEphySetting2RegValue.EPHY1_TXDU_L1 = 0x3B;
             DPEphySetting2RegValue.EPHY1_TXDU_L2 = 0x3B;
             DPEphySetting2RegValue.EPHY1_TXDU_L3 = 0x3F;
@@ -578,12 +596,12 @@ CBIOS_VOID cbPHY_DP_DualModeOnOff(PCBIOS_VOID pvcbe, CBIOS_MODULE_INDEX DPModule
                 DPSwingRegValue.DP1_SW_post_cursor = 0;
                 cbMMIOWriteReg32(pcbe, DP_REG_SWING[DPModuleIndex], DPSwingRegValue.Value, DPSwingRegMask.Value);
             }
-            else if(ClockFreq == 5940000 && bACE)
+            else if(bACE)
             {
                 DPSwingRegValue.Value = 0;
                 DPSwingRegValue.enable_SW_swing_pp = 1;
                 DPSwingRegValue.SW_swing_SW_PP_SW_post_cursor_load_index = 9;
-                DPSwingRegValue.DP1_SW_swing = 0x2F;
+                DPSwingRegValue.DP1_SW_swing = 0x34;
                 DPSwingRegValue.DP1_SW_pp = 0x9;
                 DPSwingRegValue.DP1_SW_post_cursor = 0;
                 cbMMIOWriteReg32(pcbe, DP_REG_SWING[DPModuleIndex], DPSwingRegValue.Value, DPSwingRegMask.Value);
@@ -591,7 +609,7 @@ CBIOS_VOID cbPHY_DP_DualModeOnOff(PCBIOS_VOID pvcbe, CBIOS_MODULE_INDEX DPModule
                 DPSwingRegValue.Value = 0;
                 DPSwingRegValue.enable_SW_swing_pp = 1;
                 DPSwingRegValue.SW_swing_SW_PP_SW_post_cursor_load_index = 1;
-                DPSwingRegValue.DP1_SW_swing = 0x36;
+                DPSwingRegValue.DP1_SW_swing = 0x39;
                 DPSwingRegValue.DP1_SW_pp = 0xB;
                 DPSwingRegValue.DP1_SW_post_cursor = 0;
                 cbMMIOWriteReg32(pcbe, DP_REG_SWING[DPModuleIndex], DPSwingRegValue.Value, DPSwingRegMask.Value);
@@ -600,6 +618,10 @@ CBIOS_VOID cbPHY_DP_DualModeOnOff(PCBIOS_VOID pvcbe, CBIOS_MODULE_INDEX DPModule
                 DPSwingRegValue.enable_SW_swing_pp = 1;
                 DPSwingRegValue.SW_swing_SW_PP_SW_post_cursor_load_index = 5;
                 DPSwingRegValue.DP1_SW_swing = 0x21;
+                if (pcbe->bYTCustomer && (pcbe->ChipID == CHIPID_ARISE2030))
+                {
+                    DPSwingRegValue.DP1_SW_swing = 0x2D; // For HDMI1 and HDMI2
+                }
                 DPSwingRegValue.DP1_SW_pp = 0;
                 DPSwingRegValue.DP1_SW_post_cursor = 0;
                 cbMMIOWriteReg32(pcbe, DP_REG_SWING[DPModuleIndex], DPSwingRegValue.Value, DPSwingRegMask.Value);
@@ -1601,7 +1623,14 @@ static CBIOS_BOOL cbPHY_DP_SelectTMDSModeSource(PCBIOS_EXTENSION_COMMON pcbe, CB
             else if(MonitorType == CBIOS_MONITOR_TYPE_DVI)
             {
                 RegSR3AValue.Value = 0;
-                RegSR3AValue.DP_PHY_Source_Sel = 4; //PS background overlay will affect DE of DVI timing, force to HDMI mode can fix this issue
+                if (pcbe->CbiosFlags & GF_RUN_HDCP_CTS)
+                {
+                    RegSR3AValue.DP_PHY_Source_Sel = 0;
+                }
+                else
+                {
+                    RegSR3AValue.DP_PHY_Source_Sel = 4; //PS background overlay will affect DE of DVI timing, force to HDMI mode can fix this issue
+                }
             }
             RegSR3AMask.Value = 0xFF;
             RegSR3AMask.DP_PHY_Source_Sel = 0;

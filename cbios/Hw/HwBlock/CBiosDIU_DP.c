@@ -1331,6 +1331,12 @@ CBIOS_BOOL cbDIU_DP_LinkTrainingHw(PCBIOS_VOID pvcbe, CBIOS_MODULE_INDEX DPModul
                 cbMMIOWriteReg32(pcbe, DP_REG_SWING[DPModuleIndex], DPSwingRegValue.Value, DPSwingRegMask.Value);
             }
 
+            // Patch for DPR-100: if not delay, link_training maybe fail
+            if(pDpContext->DPPortParams.bRunCTS)
+            {
+                cbDelayMilliSeconds(300);
+            }
+
             // enable HW link training
             DPLinkRegValue.Value = 0;
             DPLinkRegValue.Start_Link_Training = 1;
@@ -1823,7 +1829,7 @@ CBIOS_VOID cbDIU_DP_SendInfoFrame(PCBIOS_VOID pvcbe, CBIOS_MODULE_INDEX DPModule
     DPEnableInfoFrameRegValue.InfoFrame_FIFO_Select = 0; // select FIFO 1
     DPEnableInfoFrameRegValue.InfoFrame_FIFO_1_Ready = 1;
     DPEnableInfoFrameRegValue.InfoFrame_FIFO_1_Start_Address = StartAddress;
-    DPEnableInfoFrameRegValue.InfoFrame_FIFO_1_Length = Length - 1;
+    DPEnableInfoFrameRegValue.InfoFrame_FIFO_1_Length = Length;
     DPEnableInfoFrameRegMask.Value = 0xFFFFFFFF;
     DPEnableInfoFrameRegMask.InfoFrame_FIFO_Select = 0;
     DPEnableInfoFrameRegMask.InfoFrame_FIFO_1_Ready = 0;
@@ -2055,124 +2061,23 @@ static CBIOS_BOOL cbDIU_DP_CheckAuxReplyStatus(PCBIOS_EXTENSION_COMMON pcbe, CBI
     return bStatus;
 }
 
-CBIOS_U32 cbDIU_DP_AuxReadEDID(PCBIOS_VOID pvcbe, CBIOS_MODULE_INDEX DPModuleIndex, PCBIOS_UCHAR pEDIDBuffer, CBIOS_U32 ulBufferSize)
+CBIOS_BOOL cbDIU_DP_AuxReadEDIDOffset(PCBIOS_VOID pvcbe, CBIOS_MODULE_INDEX DPModuleIndex, PCBIOS_UCHAR pEDIDBuffer, CBIOS_U32 ulBufferSize, CBIOS_U32 ulReadEdidOffset, CBIOS_U8 nSegNum)
 {
     PCBIOS_EXTENSION_COMMON pcbe = (PCBIOS_EXTENSION_COMMON)pvcbe;
     CBIOS_BOOL              bStatus = CBIOS_FALSE;
-    CBIOS_U32               i, j;
-    CBIOS_U32               dTemp, ulEdidLength = 0;
-    CBIOS_UCHAR             ucChecksum;
+    CBIOS_U32               i = 0, j = 0;
     REG_MM8334              DPAuxCmdRegValue;
-    AUX_CONTROL             AUX;
-    DPCD_REG_00260          DPCD_00260;
-    DPCD_REG_00261          DPCD_00261;
-    CBIOS_U32               EdidBlockNum = 0;
-    const CBIOS_U32         EdidBlockBufferSize = 256;
-    PCBIOS_UCHAR            pEdidTempBuffer = pEDIDBuffer;
+    CBIOS_U32               dTemp[4];
 
     cbTraceEnter(DP);
 
     if (DPModuleIndex >= DP_MODU_NUM)
     {
         cbDebugPrint((MAKE_LEVEL(DP, ERROR), "%s: invalid DP module index!\n", FUNCTION_NAME));
-        return  0;
+        return  CBIOS_FALSE;
     }
 
-    // AUX write, 0 byte, address 050h (A0h >> 1), address transaction only
-    DPAuxCmdRegValue.Value = 0;
-    DPAuxCmdRegValue.SW_AUX_CMD = CBIOS_AUX_REQUEST_I2C_WRITE | CBIOS_AUX_REQUEST_I2C_MOT;
-    DPAuxCmdRegValue.SW_AUX_Length = 0;
-    DPAuxCmdRegValue.SW_AUX_Addr = 0x00050;
-    cb_WriteU32(pcbe->pAdapterContext, DP_REG_AUX_CMD[DPModuleIndex], DPAuxCmdRegValue.Value);
-    cbDIU_DP_SWAuxRequest(pcbe, DPModuleIndex);
-    if (!cbDIU_DP_CheckAuxReplyStatus(pcbe, DPModuleIndex, CBIOS_FALSE))
-        goto exitAuxReadEDID;
-
-    // AUX write, 1 byte, address 050h (A0h >> 1), set EDID offset 0
-    cbDIU_DP_ClearAuxWriteBuffer(pcbe, DPModuleIndex);
-    DPAuxCmdRegValue.Value = 0;
-    DPAuxCmdRegValue.SW_AUX_CMD = CBIOS_AUX_REQUEST_I2C_WRITE | CBIOS_AUX_REQUEST_I2C_MOT;
-    DPAuxCmdRegValue.SW_AUX_Length = 1;
-    DPAuxCmdRegValue.SW_AUX_Addr = 0x00050;
-    cb_WriteU32(pcbe->pAdapterContext, DP_REG_AUX_CMD[DPModuleIndex], DPAuxCmdRegValue.Value);
-    cbDIU_DP_SWAuxRequest(pcbe, DPModuleIndex);
-    if (!cbDIU_DP_CheckAuxReplyStatus(pcbe, DPModuleIndex, CBIOS_FALSE))
-        goto exitAuxReadEDID;
-
-    // Parade DP RX can't trasnmit more than 7 bytes at a time... Be reminded!
-    // AUX read, 0 byte, I2C read repeated start
-    DPAuxCmdRegValue.Value = 0;
-    DPAuxCmdRegValue.SW_AUX_CMD = CBIOS_AUX_REQUEST_I2C_READ | CBIOS_AUX_REQUEST_I2C_MOT;
-    DPAuxCmdRegValue.SW_AUX_Length = 0;
-    DPAuxCmdRegValue.SW_AUX_Addr = 0x00050;
-    cb_WriteU32(pcbe->pAdapterContext, DP_REG_AUX_CMD[DPModuleIndex], DPAuxCmdRegValue.Value);
-    cbDIU_DP_SWAuxRequest(pcbe, DPModuleIndex);
-    if (!cbDIU_DP_CheckAuxReplyStatus(pcbe, DPModuleIndex, CBIOS_FALSE))
-        goto exitAuxReadEDID;
-
-    // AUX I2C read, 2 bytes, address 050h (A0h >> 1)
-    DPAuxCmdRegValue.Value = 0;
-    DPAuxCmdRegValue.SW_AUX_CMD = CBIOS_AUX_REQUEST_I2C_READ | CBIOS_AUX_REQUEST_I2C_MOT;
-    DPAuxCmdRegValue.SW_AUX_Length = 2;
-    DPAuxCmdRegValue.SW_AUX_Addr = 0x00050;
-    cb_WriteU32(pcbe->pAdapterContext, DP_REG_AUX_CMD[DPModuleIndex], DPAuxCmdRegValue.Value);
-
-    ucChecksum = 0;
-    for (i = 0; i < EdidBlockBufferSize / 128; i++)
-    {
-        for (j = 0; j < 128 / 2; j ++)
-        {
-            cbDIU_DP_SWAuxRequest(pcbe, DPModuleIndex);
-            if (!cbDIU_DP_CheckAuxReplyStatus(pcbe, DPModuleIndex, CBIOS_FALSE))
-            {
-                cbDebugPrint((MAKE_LEVEL(DP, WARNING), "%s: Read EDID 0x%x failed!\n", FUNCTION_NAME, 2*j));
-            }
-            dTemp = cb_ReadU32(pcbe->pAdapterContext, DP_REG_AUX_READ0[DPModuleIndex]);
-
-            ucChecksum += pEDIDBuffer[i * 128 + j * 2 + 0] = (CBIOS_U8) (dTemp >> 0);
-            ucChecksum += pEDIDBuffer[i * 128 + j * 2 + 1] = (CBIOS_U8) (dTemp >> 8);
-        }
-
-        ulEdidLength += 128;
-
-        // Must check checksum before check extension flag in case EDID is corrupted
-        if (ucChecksum == 0)
-        {
-            if (ulEdidLength == (pEDIDBuffer[0x7E] + 1) * 128) // Extension flag
-            {
-                bStatus = CBIOS_TRUE;
-                break;
-            }
-        }
-        else
-        {
-            cbDebugPrint((MAKE_LEVEL(DP, ERROR), "%s: checksum == 0x%02x, wrong!!\n", FUNCTION_NAME, ucChecksum));
-            bStatus = CBIOS_FALSE;
-            if (ulEdidLength == (pEDIDBuffer[0x7E] + 1) * 128) // Extension flag
-            {
-                break;
-            }
-        }
-    }
-
-    // AUX read, 0 byte, without MOT => I2C stop
-    DPAuxCmdRegValue.Value = 0;
-    DPAuxCmdRegValue.SW_AUX_CMD = CBIOS_AUX_REQUEST_I2C_READ;
-    DPAuxCmdRegValue.SW_AUX_Length = 0;
-    DPAuxCmdRegValue.SW_AUX_Addr = 0x00050;
-    cb_WriteU32(pcbe->pAdapterContext, DP_REG_AUX_CMD[DPModuleIndex], DPAuxCmdRegValue.Value);
-    cbDIU_DP_SWAuxRequest(pcbe, DPModuleIndex);
-    if (!cbDIU_DP_CheckAuxReplyStatus(pcbe, DPModuleIndex, CBIOS_FALSE))
-    {
-        cbDebugPrint((MAKE_LEVEL(DP, ERROR), "%s: Send I2C STOP failed!\n", FUNCTION_NAME));
-        bStatus = CBIOS_TRUE;
-        goto exitAuxReadEDID;
-    }
-
-    // if EdidBlockNum > 2, read the rest edid data.
-    EdidBlockNum = pEDIDBuffer[0x7E] + 1;
-    pEdidTempBuffer = pEDIDBuffer + EdidBlockBufferSize;
-    if (EdidBlockNum > 2)
+    if (nSegNum)
     {
         // AUX write, 0 byte, address 030h (60h >> 1), address transaction only
         DPAuxCmdRegValue.Value = 0;
@@ -2182,144 +2087,23 @@ CBIOS_U32 cbDIU_DP_AuxReadEDID(PCBIOS_VOID pvcbe, CBIOS_MODULE_INDEX DPModuleInd
         cb_WriteU32(pcbe->pAdapterContext, DP_REG_AUX_CMD[DPModuleIndex], DPAuxCmdRegValue.Value);
         cbDIU_DP_SWAuxRequest(pcbe, DPModuleIndex);
         if (!cbDIU_DP_CheckAuxReplyStatus(pcbe, DPModuleIndex, CBIOS_FALSE))
-            goto exitAuxReadEDID;
+        {
+            goto ExitFunc;
+        }
 
-        // AUX write, 1 byte, address 030h (60h >> 1), set EDID segment num 1
+        // AUX write, 1 byte, address 030h (60h >> 1), set EDID segment num
         cbDIU_DP_ClearAuxWriteBuffer(pcbe, DPModuleIndex);
         DPAuxCmdRegValue.Value = 0;
         DPAuxCmdRegValue.SW_AUX_CMD = CBIOS_AUX_REQUEST_I2C_WRITE | CBIOS_AUX_REQUEST_I2C_MOT;
         DPAuxCmdRegValue.SW_AUX_Length = 1;
         DPAuxCmdRegValue.SW_AUX_Addr = 0x00030;
         cb_WriteU32(pcbe->pAdapterContext, DP_REG_AUX_CMD[DPModuleIndex], DPAuxCmdRegValue.Value);
-        cb_WriteU32(pcbe->pAdapterContext, DP_REG_AUX_WRITE0[DPModuleIndex], 1);
-        cbDIU_DP_SWAuxRequest(pcbe, DPModuleIndex);
-        if (!cbDIU_DP_CheckAuxReplyStatus(pcbe, DPModuleIndex, CBIOS_FALSE))
-            goto exitAuxReadEDID;
-
-        // AUX write, 0 byte, address 050h (A0h >> 1), address transaction only
-        DPAuxCmdRegValue.Value = 0;
-        DPAuxCmdRegValue.SW_AUX_CMD = CBIOS_AUX_REQUEST_I2C_WRITE | CBIOS_AUX_REQUEST_I2C_MOT;
-        DPAuxCmdRegValue.SW_AUX_Length = 0;
-        DPAuxCmdRegValue.SW_AUX_Addr = 0x00050;
-        cb_WriteU32(pcbe->pAdapterContext, DP_REG_AUX_CMD[DPModuleIndex], DPAuxCmdRegValue.Value);
-        cbDIU_DP_SWAuxRequest(pcbe, DPModuleIndex);
-        if (!cbDIU_DP_CheckAuxReplyStatus(pcbe, DPModuleIndex, CBIOS_FALSE))
-            goto exitAuxReadEDID;
-
-        // AUX write, 1 byte, address 050h (A0h >> 1), set EDID offset 0
-        cbDIU_DP_ClearAuxWriteBuffer(pcbe, DPModuleIndex);
-        DPAuxCmdRegValue.Value = 0;
-        DPAuxCmdRegValue.SW_AUX_CMD = CBIOS_AUX_REQUEST_I2C_WRITE | CBIOS_AUX_REQUEST_I2C_MOT;
-        DPAuxCmdRegValue.SW_AUX_Length = 1;
-        DPAuxCmdRegValue.SW_AUX_Addr = 0x00050;
-        cb_WriteU32(pcbe->pAdapterContext, DP_REG_AUX_CMD[DPModuleIndex], DPAuxCmdRegValue.Value);
-        cbDIU_DP_SWAuxRequest(pcbe, DPModuleIndex);
-        if (!cbDIU_DP_CheckAuxReplyStatus(pcbe, DPModuleIndex, CBIOS_FALSE))
-            goto exitAuxReadEDID;
-
-        // Parade DP RX can't trasnmit more than 7 bytes at a time... Be reminded!
-        // AUX read, 0 byte, I2C read repeated start
-        DPAuxCmdRegValue.Value = 0;
-        DPAuxCmdRegValue.SW_AUX_CMD = CBIOS_AUX_REQUEST_I2C_READ | CBIOS_AUX_REQUEST_I2C_MOT;
-        DPAuxCmdRegValue.SW_AUX_Length = 0;
-        DPAuxCmdRegValue.SW_AUX_Addr = 0x00050;
-        cb_WriteU32(pcbe->pAdapterContext, DP_REG_AUX_CMD[DPModuleIndex], DPAuxCmdRegValue.Value);
-        cbDIU_DP_SWAuxRequest(pcbe, DPModuleIndex);
-        if (!cbDIU_DP_CheckAuxReplyStatus(pcbe, DPModuleIndex, CBIOS_FALSE))
-            goto exitAuxReadEDID;
-
-        // AUX I2C read, 2 bytes, address 050h (A0h >> 1)
-        DPAuxCmdRegValue.Value = 0;
-        DPAuxCmdRegValue.SW_AUX_CMD = CBIOS_AUX_REQUEST_I2C_READ | CBIOS_AUX_REQUEST_I2C_MOT;
-        DPAuxCmdRegValue.SW_AUX_Length = 2;
-        DPAuxCmdRegValue.SW_AUX_Addr = 0x00050;
-        cb_WriteU32(pcbe->pAdapterContext, DP_REG_AUX_CMD[DPModuleIndex], DPAuxCmdRegValue.Value);
-
-        ucChecksum = 0;
-        for (i = 0; i < EdidBlockBufferSize / 128; i++)
-        {
-            for (j = 0; j < 128 / 2; j ++)
-            {
-                cbDIU_DP_SWAuxRequest(pcbe, DPModuleIndex);
-                if (!cbDIU_DP_CheckAuxReplyStatus(pcbe, DPModuleIndex, CBIOS_FALSE))
-                {
-                    cbDebugPrint((MAKE_LEVEL(DP, WARNING), "%s: Read EDID 0x%x failed!\n", FUNCTION_NAME, 2*j));
-                }
-                dTemp = cb_ReadU32(pcbe->pAdapterContext, DP_REG_AUX_READ0[DPModuleIndex]);
-
-                ucChecksum += pEdidTempBuffer[i * 128 + j * 2 + 0] = (CBIOS_U8) (dTemp >> 0);
-                ucChecksum += pEdidTempBuffer[i * 128 + j * 2 + 1] = (CBIOS_U8) (dTemp >> 8);
-            }
-
-            ulEdidLength += 128;
-
-            // Must check checksum before check extension flag in case EDID is corrupted
-            if (ucChecksum == 0)
-            {
-                if (ulEdidLength == (pEDIDBuffer[0x7E] + 1) * 128) // Extension flag
-                {
-                    bStatus = CBIOS_TRUE;
-                    break;
-                }
-            }
-            else
-            {
-                cbDebugPrint((MAKE_LEVEL(DP, ERROR), "%s: checksum == 0x%02x, wrong!!\n", FUNCTION_NAME, ucChecksum));
-                bStatus = CBIOS_FALSE;
-                if (ulEdidLength == (pEDIDBuffer[0x7E] + 1) * 128) // Extension flag
-                {
-                    break;
-                }
-            }
-        }
-
-        // AUX read, 0 byte, without MOT => I2C stop
-        DPAuxCmdRegValue.Value = 0;
-        DPAuxCmdRegValue.SW_AUX_CMD = CBIOS_AUX_REQUEST_I2C_READ;
-        DPAuxCmdRegValue.SW_AUX_Length = 0;
-        DPAuxCmdRegValue.SW_AUX_Addr = 0x00050;
-        cb_WriteU32(pcbe->pAdapterContext, DP_REG_AUX_CMD[DPModuleIndex], DPAuxCmdRegValue.Value);
+        cb_WriteU32(pcbe->pAdapterContext, DP_REG_AUX_WRITE0[DPModuleIndex], nSegNum);
         cbDIU_DP_SWAuxRequest(pcbe, DPModuleIndex);
         if (!cbDIU_DP_CheckAuxReplyStatus(pcbe, DPModuleIndex, CBIOS_FALSE))
         {
-            cbDebugPrint((MAKE_LEVEL(DP, ERROR), "%s: Send I2C STOP failed!\n", FUNCTION_NAME));
-            bStatus = CBIOS_TRUE;
-            goto exitAuxReadEDID;
+            goto ExitFunc;
         }
-    }
-
-    // For CTS EDID read test item: 4.2.2.3
-    // Should always check the checksum of last edid block according to linklayer compliance test spec.
-    DPCD_00260.Value = 0;
-    DPCD_00260.TEST_EDID_CHECKSUM_WRITE = 1;
-    DPCD_00261.Value = 0;
-    DPCD_00261.TEST_EDID_CHECKSUM = pEDIDBuffer[ulEdidLength - 1];
-
-    AUX.Function = CBIOS_AUX_REQUEST_NATIVE_WRITE;
-    AUX.Offset = 0x260;
-    AUX.Length = 0x2;
-    AUX.Data[0] = (DPCD_00261.Value << 8) | DPCD_00260.Value;
-    if(!cbDIU_DP_AuxChRW(pcbe, DPModuleIndex, &AUX))
-    {
-        cbDebugPrint((MAKE_LEVEL(DP, ERROR), "%s: Write EDID checksum to TEST_RESPONSE and TEST_EDID_CHECKSUM fields of DPCD failed!\n", FUNCTION_NAME));
-    }
-
-exitAuxReadEDID:
-    cbTraceExit(DP);
-    return bStatus ? ulEdidLength : 0;
-}
-
-CBIOS_BOOL cbDIU_DP_AuxReadEDIDOffset(PCBIOS_VOID pvcbe, CBIOS_MODULE_INDEX DPModuleIndex, PCBIOS_UCHAR pEDIDBuffer, CBIOS_U32 ulBufferSize, CBIOS_U32 ulReadEdidOffset)
-{
-    PCBIOS_EXTENSION_COMMON pcbe = (PCBIOS_EXTENSION_COMMON)pvcbe;
-    CBIOS_BOOL              bStatus = CBIOS_FALSE;
-    CBIOS_U32               i = 0;
-    REG_MM8334              DPAuxCmdRegValue;
-
-    if (DPModuleIndex >= DP_MODU_NUM)
-    {
-        cbDebugPrint((MAKE_LEVEL(DP, ERROR), "%s: invalid DP module index!\n", FUNCTION_NAME));
-        return  CBIOS_FALSE;
     }
 
     //AUX write, 0 byte, address 050h (A0h >> 1), address transaction only
@@ -2335,6 +2119,7 @@ CBIOS_BOOL cbDIU_DP_AuxReadEDIDOffset(PCBIOS_VOID pvcbe, CBIOS_MODULE_INDEX DPMo
         goto ExitFunc;
     }
 
+    // AUX write, 1 byte, address 050h (A0 >> 1), set EDID offset
     cbDIU_DP_ClearAuxWriteBuffer(pcbe, DPModuleIndex);
     DPAuxCmdRegValue.Value = 0;
     DPAuxCmdRegValue.SW_AUX_CMD = CBIOS_AUX_REQUEST_I2C_WRITE | CBIOS_AUX_REQUEST_I2C_MOT;
@@ -2363,16 +2148,17 @@ CBIOS_BOOL cbDIU_DP_AuxReadEDIDOffset(PCBIOS_VOID pvcbe, CBIOS_MODULE_INDEX DPMo
         goto ExitFunc;
     }
 
-    // AUX I2C read, 1 bytes, address 050h (A0h >> 1)
-    DPAuxCmdRegValue.Value = 0;
-    DPAuxCmdRegValue.SW_AUX_CMD = CBIOS_AUX_REQUEST_I2C_READ | CBIOS_AUX_REQUEST_I2C_MOT;
-    DPAuxCmdRegValue.SW_AUX_Length = 1;
-    DPAuxCmdRegValue.SW_AUX_Addr = 0x00050;
-    cb_WriteU32(pcbe->pAdapterContext, DP_REG_AUX_CMD[DPModuleIndex], DPAuxCmdRegValue.Value);
-
     bStatus = CBIOS_TRUE;
-    for (i = 0; i < ulBufferSize; i++)
+    for (i = 0; i < ulBufferSize; i += AUX_MAX_PAYLOAD_BYTES)
     {
+        CBIOS_U8 AuxLength = cb_min(AUX_MAX_PAYLOAD_BYTES, ulBufferSize - i);
+
+        // AUX I2C read, (AuxLength) bytes, address 050h (A0h >> 1)
+        DPAuxCmdRegValue.Value = 0;
+        DPAuxCmdRegValue.SW_AUX_CMD = CBIOS_AUX_REQUEST_I2C_READ | CBIOS_AUX_REQUEST_I2C_MOT;
+        DPAuxCmdRegValue.SW_AUX_Length = AuxLength;
+        DPAuxCmdRegValue.SW_AUX_Addr = 0x00050;
+        cb_WriteU32(pcbe->pAdapterContext, DP_REG_AUX_CMD[DPModuleIndex], DPAuxCmdRegValue.Value);
         cbDIU_DP_SWAuxRequest(pcbe, DPModuleIndex);
         if (!cbDIU_DP_CheckAuxReplyStatus(pcbe, DPModuleIndex, CBIOS_FALSE))
         {
@@ -2385,11 +2171,20 @@ CBIOS_BOOL cbDIU_DP_AuxReadEDIDOffset(PCBIOS_VOID pvcbe, CBIOS_MODULE_INDEX DPMo
             DPAuxCmdRegValue.SW_AUX_Addr = 0x00050;
             cb_WriteU32(pcbe->pAdapterContext, DP_REG_AUX_CMD[DPModuleIndex], DPAuxCmdRegValue.Value);
             cbDIU_DP_SWAuxRequest(pcbe, DPModuleIndex);
-            goto ExitFunc;
-
+            {
+                goto ExitFunc;
+            }
         }
 
-        pEDIDBuffer[i] = (CBIOS_U8)cb_ReadU32(pcbe->pAdapterContext, DP_REG_AUX_READ0[DPModuleIndex]);
+        dTemp[0] = cb_ReadU32(pcbe->pAdapterContext, DP_REG_AUX_READ0[DPModuleIndex]);
+        dTemp[1] = cb_ReadU32(pcbe->pAdapterContext, DP_REG_AUX_READ1[DPModuleIndex]);
+        dTemp[2] = cb_ReadU32(pcbe->pAdapterContext, DP_REG_AUX_READ2[DPModuleIndex]);
+        dTemp[3] = cb_ReadU32(pcbe->pAdapterContext, DP_REG_AUX_READ3[DPModuleIndex]);
+
+        for (j = 0; j < AuxLength; j++)
+        {
+            pEDIDBuffer[i+j] = (CBIOS_U8)(dTemp[j / 4] >> ((j % 4) * 8));
+        }
     }
 
     // AUX read, 0 byte, without MOT => I2C stop
@@ -2409,6 +2204,28 @@ CBIOS_BOOL cbDIU_DP_AuxReadEDIDOffset(PCBIOS_VOID pvcbe, CBIOS_MODULE_INDEX DPMo
 ExitFunc:
 
     return bStatus;
+}
+
+CBIOS_VOID cbDIU_DP_AuxWriteCheckSum(PCBIOS_VOID pvcbe, CBIOS_MODULE_INDEX DPModuleIndex, CBIOS_U8 CheckSum)
+{
+    PCBIOS_EXTENSION_COMMON pcbe = (PCBIOS_EXTENSION_COMMON)pvcbe;
+    DPCD_REG_00260 DPCD_00260 = {0};
+    DPCD_REG_00261 DPCD_00261 = {0};
+    AUX_CONTROL AUX;
+
+    DPCD_00260.Value = 0;
+    DPCD_00260.TEST_EDID_CHECKSUM_WRITE = 1;
+    DPCD_00261.Value = 0;
+    DPCD_00261.TEST_EDID_CHECKSUM = CheckSum;
+
+    AUX.Function = CBIOS_AUX_REQUEST_NATIVE_WRITE;
+    AUX.Offset = 0x260;
+    AUX.Length = 0x2;
+    AUX.Data[0] = (DPCD_00261.Value << 8) | DPCD_00260.Value;
+    if(!cbDIU_DP_AuxChRW(pcbe, DPModuleIndex, &AUX))
+    {
+        cbDebugPrint((MAKE_LEVEL(DP, ERROR), "%s: Write EDID checksum to TEST_RESPONSE and TEST_EDID_CHECKSUM fields of DPCD failed!\n", FUNCTION_NAME));
+    }
 }
 
 static CBIOS_BOOL cbDIU_DP_WaitAuxReady(PCBIOS_EXTENSION_COMMON pcbe, CBIOS_MODULE_INDEX DPModuleIndex)

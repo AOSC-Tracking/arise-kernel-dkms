@@ -87,8 +87,6 @@ typedef struct
     int *in_vblk;
 }gf_get_counter_t;
 
-
-
 #define GF_SELECT_MCLK          0x00
 #define GF_SELECT_DCLK1         0x01
 #define GF_SELECT_DCLK2         0x02
@@ -101,19 +99,17 @@ typedef struct
 #define GF_PMP_SHADOW_IMG_SIZE    0x200
 #define GF_PMP_SHADOW_IMG_OFFSET  0x7CE00    // 52K - 512 byte
 
-#define GF_RUN_HDCP_CTS  0
-
 #define EDID_BUF_SIZE 512
 
 #define DUMP_REGISTER_STREAM   0x1
 
-#define  UPDATE_CRTC_MODE_FLAG   0x1
-#define  UPDATE_ENCODER_MODE_FLAG  0x2
-
 int         disp_get_output_num(int  outputs);
 int         disp_init_cbios(disp_info_t *disp_info);
+void        disp_info_pre_init(disp_info_t* disp_info);
+void        disp_info_deinit(disp_info_t* disp_info);
 int         disp_cbios_init_hw(disp_info_t *disp_info);
 int         disp_cbios_cleanup(disp_info_t *disp_info);
+int         disp_cbios_get_port_attri(disp_info_t *disp_info, int output);
 void        disp_cbios_get_crtc_resource(disp_info_t *disp_info);
 void        disp_cbios_get_crtc_caps(disp_info_t *disp_info);
 void        disp_cbios_query_vbeinfo(disp_info_t *disp_info);
@@ -130,11 +126,11 @@ int         disp_cbios_3dmode_to_drmmode(disp_info_t *disp_info, int output, voi
 int         disp_cbios_get_3dmode_size(disp_info_t* disp_info, int output);
 int         disp_cbios_get_3dmodes(disp_info_t *disp_info, int output, void* buffer, int buf_size);
 void*       disp_cbios_get_device_modelist(disp_info_t *disp_info, int output_type, int* mode_num);
-int         disp_cbios_get_mode_timing(disp_info_t *disp_info, int output, struct drm_display_mode *drm_mode);
+int         disp_cbios_get_mode_timing(disp_info_t *disp_info, int output, struct drm_display_mode *drm_mode, bool is_y420_mode);
 int         disp_cbios_get_monitor_type(disp_info_t *disp_info, int device, int  connected);
 void*       disp_cbios_read_edid(disp_info_t *disp_info, int output);
 int         disp_cbios_update_output_active(disp_info_t *disp_info, int* outputs);
-int         disp_cbios_set_mode(disp_info_t *disp_info, int crtc, struct drm_display_mode* mode, struct drm_display_mode* adjusted_mode, int  update_flag);
+int         disp_cbios_set_mode(disp_info_t *disp_info, int crtc, struct drm_display_mode* mode, struct drm_display_mode* adjusted_mode, update_mode_flag_t update_flag);
 int         disp_cbios_set_hdac_connect_status(disp_info_t *disp_info, int device , int bPresent, int bEldValid);
 int         disp_cbios_turn_onoff_screen(disp_info_t *disp_info, int iga, int on);
 int         disp_cbios_turn_onoff_iga(disp_info_t *disp_info, int iga, int on);
@@ -174,5 +170,7 @@ int         disp_cbios_vip_ctl(disp_info_t *disp_info, gf_vip_set_t *v_set);
 int         disp_cbios_wb_ctl(disp_info_t *disp_info,  gf_wb_set_t *wb_set);
 #endif
 int disp_cbios_i2c_ctrl(disp_info_t *disp_info, gf_i2c_param_t *i2c_param);
+int disp_cbios_flash_read(disp_info_t *disp_info, unsigned int addr, unsigned int size, unsigned char *buf);
+int disp_cbios_flash_write(disp_info_t *disp_info, unsigned int addr, unsigned int size, unsigned char *buf);
 
 #endif

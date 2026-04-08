@@ -634,6 +634,7 @@ int disp_init_cbios(disp_info_t *disp_info)
     {
         CBParamInit.bRunOnQT           = 0x1;
     }
+    CBParamInit.CbiosFlags = disp_info->cbios_flags;
 
     CBiosInit(pcbe, &CBParamInit);
 
@@ -649,7 +650,7 @@ int disp_cbios_init_hw(disp_info_t *disp_info)
 
     cb_status = CBiosInitHW(disp_info->cbios_ext);
 
-    if(cb_status != CBIOS_OK)
+    if (cb_status != CBIOS_OK)
     {
         gf_error("CBiosInitHW failed. cbios status is %x\n",cb_status);
         ret = DISP_FAIL;
@@ -705,6 +706,21 @@ void disp_cbios_get_crtc_caps(disp_info_t *disp_info)
     }
 }
 
+int disp_cbios_get_port_attri(disp_info_t *disp_info, int output)
+{
+    void* pcbe = disp_info->cbios_ext;
+    CBiosPortAttribute portattri = {0};
+    int conn_type = CBIOS_NON_CONN;
+
+    portattri.Size = sizeof(portattri);
+
+    portattri.DeviceId = output;
+    CBiosQueryPortAttribute(pcbe, &portattri);
+    conn_type = portattri.PortConnType;
+
+    return conn_type;
+}
+
 int disp_cbios_cleanup(disp_info_t *disp_info)
 {
     CBiosUnload(disp_info->cbios_ext);
@@ -749,7 +765,8 @@ void disp_cbios_query_vbeinfo(disp_info_t *disp_info)
         adapter_info->avai_mem_size_mb = vbeinfo.AvalMemSize;
         adapter_info->total_mem_size_mb = vbeinfo.TotalMemSize;
         adapter_info->hdaudio_to_local = vbeinfo.HdaudioToLocal;
-        adapter_info->non_simul_chip = vbeinfo.NonSimulChip;
+        adapter_info->non_simul_chip = 1; //vbeinfo.NonSimulChip
+        disp_info->szw_customer = vbeinfo.SzwCustomer;
         gf_memcpy(disp_info->pmp_version,vbeinfo.PMPVer,sizeof(vbeinfo.PMPVer));
 
         disp_info->support_output = vbeinfo.SupportDev;
@@ -1225,7 +1242,10 @@ void* disp_cbios_get_device_modelist(disp_info_t *disp_info, int output_type, in
 
     if(disp_info->scale_support)
     {
-        adapter_mode_size = disp_cbios_get_adapter_modes_size(disp_info);
+        if(!disp_info->szw_customer)
+        {
+            adapter_mode_size = disp_cbios_get_adapter_modes_size(disp_info);
+        }
 
         if(adapter_mode_size != 0)
         {
@@ -1262,7 +1282,7 @@ END:
     return pmode_list;
 }
 
-int disp_cbios_get_mode_timing(disp_info_t *disp_info, int output, struct drm_display_mode *drm_mode)
+int disp_cbios_get_mode_timing(disp_info_t *disp_info, int output, struct drm_display_mode *drm_mode, bool is_y420_mode)
 {
     void                *pcbe = disp_info->cbios_ext;
     CBIOS_GET_MODE_TIMING_PARAM   get_timing = {0};
@@ -1280,6 +1300,7 @@ int disp_cbios_get_mode_timing(disp_info_t *disp_info, int output, struct drm_di
     temp = drm_mode->clock * 1000/drm_mode->htotal;
     cbios_mode.RefreshRate = temp * 100/drm_mode->vtotal;
     cbios_mode.InterlaceProgressiveCaps = (drm_mode->flags & DRM_MODE_FLAG_INTERLACE) ? 0x02 : 0x01;
+    cbios_mode.isSupportYCbCr420 = is_y420_mode ? 1 : 0;
 
     get_timing.DeviceId = output;
     get_timing.pMode = &cbios_mode;
@@ -1439,7 +1460,7 @@ int disp_cbios_set_hdac_connect_status(disp_info_t *disp_info, int device , int 
     return DISP_OK;
 }
 
-int disp_cbios_set_mode(disp_info_t *disp_info, int crtc, struct drm_display_mode* mode, struct drm_display_mode* adjusted_mode, int flag)
+int disp_cbios_set_mode(disp_info_t *disp_info, int crtc, struct drm_display_mode* mode, struct drm_display_mode* adjusted_mode, update_mode_flag_t flag)
 {
     void*                   pcbe = disp_info->cbios_ext;
     CBIOS_STATUS            cb_status;
@@ -1456,17 +1477,32 @@ int disp_cbios_set_mode(disp_info_t *disp_info, int crtc, struct drm_display_mod
     mode_param.DestModeParams.XRes = adjusted_mode->hdisplay;
     mode_param.DestModeParams.YRes = adjusted_mode->vdisplay;
 
-    mode_param.DestModeParams.InterlaceFlag = (adjusted_mode->flags & DRM_MODE_FLAG_INTERLACE)? 1 : 0;;
+    mode_param.DestModeParams.InterlaceFlag = (adjusted_mode->flags & DRM_MODE_FLAG_INTERLACE)? 1 : 0;
     mode_param.DestModeParams.AspectRatioFlag = 0;
-    mode_param.DestModeParams.OutputSignal = CBIOS_RGBOUTPUT;
+    if (flag.output_signal == OUTPUT_SIGNAL_Y420)
+    {
+        mode_param.DestModeParams.OutputSignal = CBIOS_YCBCR420OUTPUT;
+    }
+    else if (flag.output_signal == OUTPUT_SIGNAL_Y444)
+    {
+        mode_param.DestModeParams.OutputSignal = CBIOS_YCBCR444OUTPUT;
+    }
+    else if (flag.output_signal == OUTPUT_SIGNAL_Y422)
+    {
+        mode_param.DestModeParams.OutputSignal = CBIOS_YCBCR422OUTPUT;
+    }
+    else
+    {
+        mode_param.DestModeParams.OutputSignal = CBIOS_RGBOUTPUT;
+    }
 
     mode_param.ScalerSizeParams.XRes = adjusted_mode->hdisplay;
     mode_param.ScalerSizeParams.YRes = adjusted_mode->vdisplay;
 
     mode_param.IGAIndex = crtc;
     mode_param.BitPerComponent = 8;
-    mode_param.SkipIgaMode = (flag & UPDATE_CRTC_MODE_FLAG)? 0 : 1;
-    mode_param.SkipDeviceMode = (flag & UPDATE_ENCODER_MODE_FLAG)? 0 : 1;
+    mode_param.SkipIgaMode = flag.set_crtc ? 0 : 1;
+    mode_param.SkipDeviceMode = flag.set_encoder ? 0 : 1;
 
     if(mode_param.SkipIgaMode == 0)
     {
@@ -1729,6 +1765,20 @@ int disp_cbios_get_connector_attrib(disp_info_t *disp_info, gf_connector_t *gf_c
     {
         gf_connector->base_connector.display_info.width_mm = attrib.MonitorHorSize;
         gf_connector->base_connector.display_info.height_mm = attrib.MonitorVerSize;
+        /* need TODO
+        if (attrib.MonitorCaps & 2)
+        {
+            gf_connector->base_connector.display_info.color_formats |= DRM_COLOR_FORMAT_RGB444;
+        }
+        if (attrib.MonitorCaps & 4)
+        {
+            gf_connector->base_connector.display_info.color_formats |= DRM_COLOR_FORMAT_YCBCR422;
+        }
+        if (attrib.MonitorCaps & 8)
+        {
+            gf_connector->base_connector.display_info.color_formats |= DRM_COLOR_FORMAT_YCBCR444;
+        }
+        */
         gf_connector->monitor_type = disp_biosmonitor_to_output(attrib.MonitorType);
         gf_connector->support_audio = attrib.bSupportHDAudio ? 1 : 0;
     }
@@ -1939,27 +1989,28 @@ static unsigned int DrmFormat2CBiosFormat(unsigned int drm_format, unsigned long
     return cbios_format;
 }
 
+
 int disp_cbios_crtc_flip(disp_info_t *disp_info, gf_crtc_flip_t *arg)
 {
-    gf_card_t* gf_card = disp_info->gf_card;
+    gf_card_t *gf_card = disp_info->gf_card;
     struct drm_framebuffer *fb = arg->fb;
     struct drm_gf_framebuffer *gfb = fb? to_gfb(arg->fb) : NULL;
-    CBIOS_OVERLAY_INFO   overlay = {0};
-    CBIOS_STREAM_PARA   input_stream = {0};
-    CBIOS_PLANE_PARA      disp_plane = {0};
+    CBIOS_OVERLAY_INFO overlay = {0};
+    CBIOS_STREAM_PARA input_stream = {0};
+    CBIOS_PLANE_PARA disp_plane = {0};
     CBIOS_UPDATE_FRAME_PARA  update_frame = {0};
 
     update_frame.Size = sizeof(update_frame);
     update_frame.IGAIndex = arg->crtc;
     update_frame.pPlanePara[0] = &disp_plane;
 
-    disp_plane.PlaneIndex = arg->stream_type;
-    disp_plane.StreamType = arg->stream_type;
+    disp_plane.PlaneIndex = arg->plane_type;
+    disp_plane.StreamType = (CBIOS_STREAM_TP)disp_get_input_stream(disp_info, arg->plane_type);
     disp_plane.pInputStream = &input_stream;
 
     trace_gfx_crtc_flip(gf_card->index << 16 | arg->crtc, arg, gfb ? gfb->obj : NULL);
 
-    if(fb)
+    if (fb)
     {
         disp_plane.FlipMode.FlipType = CBIOS_PLANE_FLIP_WITH_ENABLE;
     }
@@ -1970,7 +2021,7 @@ int disp_cbios_crtc_flip(disp_info_t *disp_info, gf_crtc_flip_t *arg)
 
     gf_card->primary_addr[arg->crtc] = gfb ? gfb->obj->info.gpu_virt_addr:0;
 
-    if(fb)
+    if (fb)
     {
         input_stream.SurfaceAttrib.StartAddr = gfb->obj->info.gpu_virt_addr;
         input_stream.SurfaceAttrib.SurfaceSize = (fb->width) | (fb->height << 16);
@@ -1983,7 +2034,7 @@ int disp_cbios_crtc_flip(disp_info_t *disp_info, gf_crtc_flip_t *arg)
 #endif
         input_stream.SurfaceAttrib.Pitch = fb->pitches[0];
         input_stream.SurfaceAttrib.bCompress = (gfb->obj->info.compress_format != 0);
-        if(input_stream.SurfaceAttrib.bCompress)
+        if (input_stream.SurfaceAttrib.bCompress)
         {
             input_stream.SurfaceAttrib.BLIndex = gfb->obj->info.bl_slot_index;
             input_stream.SurfaceAttrib.Range_Type = gfb->obj->info.compress_format;
@@ -1995,7 +2046,7 @@ int disp_cbios_crtc_flip(disp_info_t *disp_info, gf_crtc_flip_t *arg)
         input_stream.DispWindow.Position = arg->crtc_x | (arg->crtc_y << 16);
         input_stream.DispWindow.WinSize = arg->crtc_w | (arg->crtc_h << 16);
 
-        if(disp_plane.PlaneIndex == CBIOS_STREAM_PS)
+        if (disp_plane.PlaneIndex == GF_PLANE_PS)
         {
             disp_plane.pOverlayInfo = &overlay;
             overlay.KeyMode = CBIOS_WINDOW_KEY;
@@ -2006,12 +2057,12 @@ int disp_cbios_crtc_flip(disp_info_t *disp_info, gf_crtc_flip_t *arg)
         else
         {
             disp_plane.pOverlayInfo = &overlay;
-            if(arg->blend_mode == DRM_MODE_BLEND_PIXEL_NONE)
+            if (arg->blend_mode == DRM_MODE_BLEND_PIXEL_NONE)
             {
                 overlay.KeyMode = CBIOS_CONSTANT_ALPHA;
                 overlay.ConstantAlphaBlending.ConstantAlpha = (CBIOS_U8)(arg->const_alpha >> 8);
             }
-            else if(arg->blend_mode == DRM_MODE_BLEND_COVERAGE)  //coverage with plane alpha
+            else if (arg->blend_mode == DRM_MODE_BLEND_COVERAGE)  //coverage with plane alpha
             {
                 overlay.KeyMode = CBIOS_ALPHA_BLENDING;
                 overlay.AlphaBlending.bUseAAlpha = (arg->blend_alpha_source)? 1 : 0;
@@ -2031,7 +2082,7 @@ int disp_cbios_crtc_flip(disp_info_t *disp_info, gf_crtc_flip_t *arg)
 #endif
 
 #if  DRM_VERSION_CODE >= KERNEL_VERSION(4, 12, 0)
-        if(arg->async_flip)
+        if (arg->async_flip)
         {
             disp_plane.FlipMode.FlipImme = 1;
         }
@@ -2751,3 +2802,16 @@ int disp_cbios_i2c_ctrl(disp_info_t *disp_info, gf_i2c_param_t *i2c_param)
     return (cb_status == CBIOS_OK) ? DISP_OK : DISP_FAIL;
 }
 
+int disp_cbios_flash_read(disp_info_t *disp_info, unsigned int addr, unsigned int size, unsigned char *buf)
+{
+    int cb_status = CBiosFlashReadData(disp_info->cbios_ext, addr, buf, size);
+
+    return (cb_status == CBIOS_OK) ? DISP_OK : DISP_FAIL;
+}
+
+int disp_cbios_flash_write(disp_info_t *disp_info, unsigned int addr, unsigned int size, unsigned char *buf)
+{
+    int cb_status = CBiosFlashWriteData(disp_info->cbios_ext, addr, buf, size);
+
+    return (cb_status == CBIOS_OK) ? DISP_OK : DISP_FAIL;
+}

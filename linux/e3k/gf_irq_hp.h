@@ -1,5 +1,5 @@
 /*
- * Copyright © 2021 Glenfly Tech Co., Ltd.
+ * Copyright © 2025 Glenfly Tech Co., Ltd.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the "Software"),
@@ -21,18 +21,42 @@
  * IN THE SOFTWARE.
  *
  */
+#ifndef _GF_IRQ_HP_
+#define _GF_IRQ_HP_
 
-#define DRIVER_DATE                 "03/02/2026"
-#define DRIVER_MAJOR                0x25
-#define DRIVER_MINOR                0x00
-#define DRIVER_PATCHLEVEL           0x53
-#define DRIVER_CLASS                ""
-#define DRIVER_NAME                 arise
-#define DRIVER_VENDOR               "Glenfly Tech Co., Ltd."
-#define DRIVER_LICENSE              "Glenfly"
-#define DRIVER_VERSION              ((DRIVER_MAJOR<<24)|(DRIVER_MINOR<<16)|DRIVER_PATCHLEVEL)
-#define DRIVER_VERSION_CHAR         "25.00.53"
-#define OS_VERSION                  ""
-#define CC_VERSION                  ""
-#define LD_VERSION                  ""
+#include "../gf_irq.h"
 
+#define GFX_INT_BASE_ADDR       0x140000
+#define GFX_INT_SIP_MASK_LOW    (GFX_INT_BASE_ADDR + 0x0)
+#define GFX_INT_SIP_MASK_HIGH   (GFX_INT_BASE_ADDR + 0x4)
+#define GFX_INT_CTRL_REG        (GFX_INT_BASE_ADDR + 0x14)
+#define GFX_INT_SIP_ACTIVE_LOW  (GFX_INT_BASE_ADDR + 0x48)
+#define GFX_INT_SIP_ACTIVE_HIGH (GFX_INT_BASE_ADDR + 0x4C)
+
+
+
+typedef enum _SIP_INT_BIT_LOW
+{
+    ENGINE_FENCE_INT = 0x1,
+    VSYNC1_INT  = 0x10,
+    VSYNC2_INT  = 0x40,
+    VSYNC3_INT  = 0x80,
+    VSYNC4_INT  = 0x100,
+    DP1_INT     = 0x800,
+    DP2_INT     = 0x1000,
+    DP3_INT     = 0x100000,
+    DP4_INT     = 0x200000,
+}SIP_INT_BIT_LOW;
+
+typedef enum _SIP_INT_BIT_HIGH
+{
+    HDCODEC_INT = 0x2,
+}SIP_INT_BIT_HIGH;
+
+typedef struct _intr_info
+{
+    unsigned int sip_intr_lbits;
+    unsigned int sip_intr_hbits;
+}intr_info_t;
+
+#endif

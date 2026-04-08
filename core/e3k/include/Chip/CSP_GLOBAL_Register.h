@@ -89,6 +89,18 @@
 #define        Reg_Vpp_Workload_Offset                                    0xFA
 #define        Reg_Vcp0_Workload_Offset                                   0xFB
 #define        Reg_Vcp1_Workload_Offset                                   0xFC
+
+#define        Reg_Dvfs_Cfg_En_Offset                                     0x100
+#define        Reg_Dvfs_Cfg_Misc0_Offset                                  0x101
+#define        Reg_3d_Dvfs_Checksize_Offset                               0x102
+#define        Reg_3d_Dvfs_H_Th_Offset                                    0x103
+#define        Reg_3d_Dvfs_L_Th_Offset                                    0x104
+#define        Reg_3d_Dvfs_H_Th_Mem_Offset                                0x105
+#define        Reg_3d_Alu_Workload_Offset                                 0x106
+#define        Reg_3d_Busy_Workload_Offset                                0x107
+#define        Reg_Dvfs_Pcu_Cfg_En_Offset                                 0x108
+#define        Reg_3d_Mem_Busy_Cycle_Offset                               0x109
+
 #define        Reg_Vcp_Ring_Buf_Offset                                    0x180
 #define        Reg_Vpp_Ring_Buf_Offset                                    0x188
 #define        Reg_Vcp_Vpp_Block_Busy_Bits_Offset                         0x18C
@@ -411,7 +423,6 @@ typedef union
     } reg;
 } Reg_Pfb_Partition_Cs_Cfg;
 
-
 typedef union
 {
     unsigned int uint;
@@ -420,7 +431,6 @@ typedef union
         unsigned int     uint;
     } reg;
 } Reg_Csp_Ms_Total_Gpu_Timestamp;
-
 
 typedef union
 {
@@ -431,7 +441,6 @@ typedef union
     } reg;
 } Reg_Csp_Ms_Total_Busy_Time;
 
-
 typedef union
 {
     unsigned int uint;
@@ -441,7 +450,6 @@ typedef union
     } reg;
 } Reg_Csp_Ms_Query_Occlusion;
 
-
 typedef union
 {
     unsigned int uint;
@@ -450,7 +458,6 @@ typedef union
         unsigned int     uint;
     } reg;
 } Reg_Ia_Vertices_Cnt;
-
 
 typedef union
 {
@@ -1217,6 +1224,107 @@ typedef union
         unsigned int     uint;
     } reg;
 } Reg_Vcp1_Workload;
+
+typedef union
+{
+    unsigned int uint;
+    struct
+    {
+        unsigned int Dvfs_3d_Auto_En    : 1;
+        unsigned int Reg_Memory_Dvfs_En : 1;
+        unsigned int Reserved           : 30;
+    } reg;
+} Reg_Dvfs_Cfg_En;
+
+typedef union
+{
+    unsigned int uint;
+    struct
+    {
+        unsigned int Dvfs_3d_Cnt_Mode    : 2;
+        unsigned int Dvfs_3d_Cnt_Mux     : 1;
+        unsigned int Dvfs_3d_Output_Mode : 2;
+        unsigned int Dvfs_3d_M2m_Dvfs_En : 1;
+        unsigned int Dvfs_3d_M2e_Ratio   : 3;
+        unsigned int Dvfs_Slc_Cnt_Mode   : 1;
+        unsigned int Reserved            : 22;
+    } reg;
+} Reg_Dvfs_Cfg_Misc0;
+
+typedef union
+{
+    unsigned int uint;
+    struct
+    {
+        unsigned int Check_Size_3d : 32;
+    } reg;
+} Reg_3d_Dvfs_Checksize;
+
+typedef union
+{
+    unsigned int uint;
+    struct
+    {
+        unsigned int High_Workload_Threshold_3d : 32;
+    } reg;
+} Reg_3d_Dvfs_H_Th;
+
+typedef union
+{
+    unsigned int uint;
+    struct
+    {
+        unsigned int Low_Workload_Threshold_3d : 32;
+    } reg;
+} Reg_3d_Dvfs_L_Th;
+
+typedef union
+{
+    unsigned int uint;
+    struct
+    {
+        unsigned int Mem_Busy_Threshold_3d : 32;
+    } reg;
+} Reg_3d_Dvfs_H_Th_Mem;
+
+typedef union
+{
+    unsigned int uint;
+    struct
+    {
+        unsigned int Alu_Workload_3d : 32;
+    } reg;
+} Reg_3d_Alu_Workload;
+
+typedef union
+{
+    unsigned int uint;
+    struct
+    {
+        unsigned int Busy_Workload_3d : 32;
+    } reg;
+} Reg_3d_Busy_Workload;
+
+typedef union
+{
+    unsigned int uint;
+    struct
+    {
+        unsigned int Reg_Pcu_3d_Dvfs_En    : 1;
+        unsigned int Reg_Force_3d_Inc_Dfvs : 1;
+        unsigned int Reg_Force_3d_Dec_Dfvs : 1;
+        unsigned int Reserved              : 29;
+    } reg;
+} Reg_Dvfs_Pcu_Cfg_En;
+
+typedef union
+{
+    unsigned int uint;
+    struct
+    {
+        unsigned int Memory_Busy_Cnt : 32;
+    } reg;
+} Reg_3d_Mem_Busy_Cycle;
 
 typedef union
 {

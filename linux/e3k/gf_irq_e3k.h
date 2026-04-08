@@ -26,7 +26,6 @@
 
 #include "../gf_irq.h"
 
-
 #define INTR_EN_REG  0x8508
 #define ADV_INTR_EN_REG 0x854c
 #define INTR_SHADOW_REG  0x8574

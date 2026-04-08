@@ -738,6 +738,8 @@ CBIOS_STATUS cbHWGetVBiosInfo(PCBIOS_VOID pvcbe, PCBIOS_VBINFO_PARAM  pVbiosInfo
 
     pVbiosInfo->NonSimulChip = pcbe->FeatureSwitch.bNonSimulChip;
 
+    pVbiosInfo->SzwCustomer = pcbe->bSzwCustomer;
+
     if (pVbiosInfo->Size >= SIZEOF_STRUCT_TILL_MEMBER(pVbiosInfo, TotalMemSize))
     {
         cbHwGetMemInfo(pcbe, pVbiosInfo);

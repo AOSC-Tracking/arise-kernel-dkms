@@ -28,10 +28,6 @@
 #include "gf_cbios.h"
 #include "gf_crtc.h"
 
-#define GF_SPLICE_CURSOR_PLANE 4
-
-#define GF_SPLICE_PRIMARY_PLANE 0
-
 #define GF_SPLICE_PLANE_NUM 1
 
 #define GF_DRM_TIMESTAMP_MAXRETRIES 3

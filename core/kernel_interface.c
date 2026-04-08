@@ -131,9 +131,10 @@ static  void krnl_init_adapter(void* adp, int reserved_vmem, void *disp_info)
 
     gf_info("adapter->ctl_flags.worker_thread_enable %x\n", adapter->ctl_flags.worker_thread_enable);
 
-    gf_info("sys caps: os page size :0x%x, os page shift:0x%x, iommu_support:%x\n",
+    gf_info("sys caps: os page size :0x%x, os page shift:0x%x, iommu_support:%x, pcie:%u.0x%u\n",
             adapter->os_page_size, adapter->os_page_shift,
-            adapter->sys_caps.iommu_enabled);
+            adapter->sys_caps.iommu_enabled,
+            adapter->link_speed, adapter->link_width);
 
     gf_info("hw cfg: chip slice mask :%x, miu channel index:%x, miu channel size index:%x, backdoor:%d\n",
             adapter->hw_caps.chip_slice_mask, adapter->hw_caps.miu_channel_num,
@@ -194,12 +195,14 @@ static  void krnl_get_adapter_info(void*  adp, adapter_info_t*  adapter_info)
         adapter_info->family_id = adapter->family_id;
         adapter_info->generic_id = adapter->generic_id;
         adapter_info->chip_id = adapter->chip_id;
+        adapter_info->revision_id = adapter->bus_config.revision_id;
         adapter_info->mmio  = adapter->mmio;
         adapter_info->mmio_size = adapter->mmio_vma->size;
         adapter_info->primary = adapter->primary;
         adapter_info->fb_bus_addr = adapter->vidmm_bus_addr;
         adapter_info->fb_total_size = adapter->Visible_vram_size;
         adapter_info->run_on_qt = adapter->ctl_flags.run_on_qt;
+        adapter_info->virtual_display = adapter->ctl_flags.virtual_display;
         adapter_info->patch_fence_intr_lost = (adapter->hw_patch_mask0 & PATCH_FENCE_INTERRUPT_LOST) ? 1 : 0;
     }
 }
@@ -1382,6 +1385,13 @@ static int krnl_set_power_state(void *data, unsigned int state, unsigned int hol
     return 0;
 }
 
+static void krnl_selftest(void *data)
+{
+    adapter_t *adapter = data;
+
+    vidsch_selftest(adapter);
+}
+
 static core_interface_t gfe3k_gpu_core = {
 #define INTERFACE(item) .item = krnl_##item
     INTERFACE(pre_init_adapter),
@@ -1445,6 +1455,7 @@ static core_interface_t gfe3k_gpu_core = {
     INTERFACE(disp_state_update),
     INTERFACE(get_power_state),
     INTERFACE(set_power_state),
+    INTERFACE(selftest),
 #undef INTERFACE
 };
 

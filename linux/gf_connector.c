@@ -76,49 +76,57 @@ gf_connector_detect_internal(struct drm_connector *connector, bool force, int fu
         return connector->funcs->detect(connector, force);
     }
 
-#if GF_RUN_HDCP_CTS
-    if((!full_detect) && (output & DISP_OUTPUT_DP_TYPES) && gf_connector->detected)
+    if (disp_info->cbios_flags & (GF_RUN_HDCP_CTS | GF_RUN_DP_CTS))
     {
-        conn_status = connector->status;
-    }
-    else
-    {
-        if(gf_connector->hpd_out &&(output & DISP_OUTPUT_DP_TYPES))
+        if((!full_detect) && (output & DISP_OUTPUT_DP_TYPES) && gf_connector->detected)
         {
-            gf_connector->hpd_out = 0;
-            conn_status = connector_status_disconnected;
+            conn_status = connector->status;
         }
         else
         {
-            detected_output = disp_cbios_detect_connected_output(disp_info, output, full_detect);
-            conn_status = (detected_output & output)? connector_status_connected : connector_status_disconnected;
-            gf_connector->edid_changed = 0;
-            gf_connector->detected = 1;
-        }
-    }
-#else
-    gf_mutex_lock(gf_connector->conn_mutex);
-    detected_output = disp_cbios_detect_connected_output(disp_info, output, full_detect);
-    gf_mutex_unlock(gf_connector->conn_mutex);
-
-    conn_status = (detected_output & output)? connector_status_connected : connector_status_disconnected;
-
-    gf_connector->edid_changed = 0;
-#endif
-
-#ifdef ENABLE_HDMI4_VGA_ON_IGA4
-        if(gf_connector->output_type == disp_info->conflict_low && disp_info->conflict_high && conn_status == connector_status_connected)
-        {
-            list_for_each_entry(tmp_conn, &dev->mode_config.connector_list, head)
+            if(gf_connector->hpd_out &&(output & DISP_OUTPUT_DP_TYPES))
             {
-                if(to_gf_connector(tmp_conn)->output_type == disp_info->conflict_high &&
-                   tmp_conn->status == connector_status_connected)
+                if (gf_connector->hdcp_enable)
                 {
-                    conn_status = connector_status_disconnected;
-                    break;
+                    disp_cbios_enable_hdcp(disp_info, false, gf_connector->output_type);
+                    gf_connector->hdcp_enable = 0;
                 }
+                gf_connector->hpd_out = 0;
+                conn_status = connector_status_disconnected;
+            }
+            else
+            {
+                detected_output = disp_cbios_detect_connected_output(disp_info, output, full_detect);
+                conn_status = (detected_output & output)? connector_status_connected : connector_status_disconnected;
+                gf_connector->edid_changed = 0;
+                gf_connector->detected = 1;
             }
         }
+    }
+    else
+    {
+        gf_mutex_lock(gf_connector->conn_mutex);
+        detected_output = disp_cbios_detect_connected_output(disp_info, output, full_detect);
+        gf_mutex_unlock(gf_connector->conn_mutex);
+
+        conn_status = (detected_output & output)? connector_status_connected : connector_status_disconnected;
+
+        gf_connector->edid_changed = 0;
+    }
+
+#ifdef ENABLE_HDMI4_VGA_ON_IGA4
+    if(gf_connector->output_type == disp_info->conflict_low && disp_info->conflict_high && conn_status == connector_status_connected)
+    {
+        list_for_each_entry(tmp_conn, &dev->mode_config.connector_list, head)
+        {
+            if (to_gf_connector(tmp_conn)->output_type == disp_info->conflict_high &&
+                tmp_conn->status == connector_status_connected)
+            {
+                conn_status = connector_status_disconnected;
+                break;
+            }
+        }
+    }
 #endif
 
     if(conn_status == connector_status_connected)
@@ -339,7 +347,7 @@ static void gf_connector_destroy(struct drm_connector *connector)
     drm_connector_unregister(connector);
     drm_connector_cleanup(connector);
 
-    if(gf_connector->sink)
+    if (gf_connector->sink)
     {
         gf_sink_put(gf_connector->sink);
         gf_connector->sink = NULL;
@@ -411,6 +419,9 @@ static const struct drm_connector_helper_funcs gf_connector_helper_funcs =
 {
     .get_modes = gf_connector_get_modes,
     .mode_valid = gf_connector_mode_valid,
+#if DRM_VERSION_CODE >= KERNEL_VERSION(4, 12, 0)
+    .atomic_check = gf_connector_atomic_check,
+#endif
 #if DRM_VERSION_CODE < KERNEL_VERSION(4, 8, 0)
     .best_encoder = gf_best_encoder,
 #endif
@@ -483,6 +494,12 @@ static void disp_create_connector_property(disp_info_t* disp_info, gf_connector_
     gf_card_t* gf_card = NULL;
     adapter_info_t* adapter_info = NULL;
     unsigned int primary = 0, pci_id = 0, internal_id = 0; //pci_id = (vend << 16) | device, internal_id = (bdf << 16) + internal_output_id
+    static const struct drm_prop_enum_list  prefer_signal_props[] = {
+        { OUTPUT_SIGNAL_RGB, "RGB" },
+        { OUTPUT_SIGNAL_Y422, "YCbCr422" },
+        { OUTPUT_SIGNAL_Y444, "YCbCr444" },
+        { OUTPUT_SIGNAL_Y420, "YCbCr420" },
+    };
 
     if (!disp_info || !gf_connector)
     {
@@ -554,9 +571,68 @@ static void disp_create_connector_property(disp_info_t* disp_info, gf_connector_
         drm_object_attach_property(&gf_connector->base_connector.base, disp_info->global_id_propl, internal_id);
     }
 
+    if (!disp_info->prefer_signal_prop)
+    {
+        disp_info->prefer_signal_prop = drm_property_create_enum(gf_card->drm_dev, 0, "prefer-signal", prefer_signal_props, ARRAY_SIZE(prefer_signal_props));
+    }
+
+    if ((gf_connector->output_type & DISP_OUTPUT_DP_TYPES) && disp_info->prefer_signal_prop)
+    {
+        drm_object_attach_property(&gf_connector->base_connector.base, disp_info->prefer_signal_prop, OUTPUT_SIGNAL_RGB);
+        gf_connector->prefer_signal = OUTPUT_SIGNAL_RGB;
+    }
+
     gf_splice_attach_connector_property(&gf_connector->base_connector);
 }
 #endif
+
+static int gf_get_conn_type(disp_info_t *disp_info, gf_connector_t *gf_connector)
+{
+    adapter_info_t* adapter_info = disp_info->adp_info;
+    int drm_conn_type = DRM_MODE_CONNECTOR_Unknown;
+    int cb_conn_type = CBIOS_NON_CONN;
+    int output = gf_connector->output_type;
+    int conn_type = 0;
+
+    conn_type = disp_cbios_get_port_attri(disp_info, output);
+
+    switch (output)
+    {
+    case DISP_OUTPUT_CRT:
+    {
+        drm_conn_type = DRM_MODE_CONNECTOR_VGA;
+    }
+    break;
+    case DISP_OUTPUT_DP1:
+    case DISP_OUTPUT_DP2:
+    case DISP_OUTPUT_DP3:
+    case DISP_OUTPUT_DP4:
+    {
+        drm_conn_type = DRM_MODE_CONNECTOR_DisplayPort;
+
+        if(conn_type == CBIOS_DVI_CONN)
+        {
+            drm_conn_type = DRM_MODE_CONNECTOR_DVID;
+        }
+        else if(conn_type == CBIOS_HDMI_CONN)
+        {
+            drm_conn_type = DRM_MODE_CONNECTOR_HDMIA;
+        }
+        else if(conn_type == CBIOS_EDP_CONN)
+        {
+            drm_conn_type = DRM_MODE_CONNECTOR_eDP;
+        }
+    }
+    break;
+    default:
+    {
+        DRM_ERROR("unkown drm connector type!\n");
+    }
+    break;
+    }
+
+    return drm_conn_type;
+}
 
 struct drm_connector* disp_connector_init(disp_info_t* disp_info, disp_output_type output)
 {
@@ -603,44 +679,38 @@ struct drm_connector* disp_connector_init(disp_info_t* disp_info, disp_output_ty
 
     connector = &gf_connector->base_connector;
 
-    if (output == DISP_OUTPUT_CRT)
-    {
-        conn_type = DRM_MODE_CONNECTOR_VGA;
-        connector->stereo_allowed = FALSE;
-        connector->interlace_allowed = FALSE;
-    }
-    else if (output == DISP_OUTPUT_DP2)
-    {
-        conn_type = DRM_MODE_CONNECTOR_DisplayPort;
-        connector->stereo_allowed = TRUE;
-        connector->interlace_allowed = TRUE;
-    }
-    else if (output & (DISP_OUTPUT_DP_TYPES & (~DISP_OUTPUT_DP2)))
-    {
-        conn_type = DRM_MODE_CONNECTOR_HDMIA;
-        connector->stereo_allowed = TRUE;
-        connector->interlace_allowed = TRUE;
-    }
-    else
-    {
-        DRM_ERROR("Unknown output\n");
-        goto failed;
-    }
+    conn_type = gf_get_conn_type(disp_info, gf_connector);
 
     gf_connector->conn_mutex = gf_create_mutex();
 
-    gf_adapter = gf_i2c_adapter_create(drm, connector);
-    if (IS_ERR(gf_adapter))
+    if(!disp_info->szw_customer)
     {
-        DRM_ERROR("failed to create zx i2c adapter\n");
-        goto failed;
+        gf_adapter = gf_i2c_adapter_create(drm, connector);
+        if (IS_ERR(gf_adapter))
+        {
+            DRM_ERROR("failed to create zx i2c adapter\n");
+            goto failed;
+        }
     }
 
 #if DRM_VERSION_CODE >= KERNEL_VERSION(5, 4, 0)
-    drm_connector_init_with_ddc(drm, connector, &gf_connector_funcs, conn_type, &gf_adapter->adapter);
+    if(gf_adapter)
+    {
+        drm_connector_init_with_ddc(drm, connector, &gf_connector_funcs, conn_type, &gf_adapter->adapter);
+    }
+    else
+    {
+        drm_connector_init(drm, connector, &gf_connector_funcs, conn_type);
+    }
 #else
-    drm_connector_init(drm, connector, &gf_connector_funcs, conn_type);
+        drm_connector_init(drm, connector, &gf_connector_funcs, conn_type);
 #endif
+
+// #if DRM_VERSION_CODE >= KERNEL_VERSION(5, 4, 0)
+//     drm_connector_init_with_ddc(drm, connector, &gf_connector_funcs, conn_type, &gf_adapter->adapter);
+// #else
+//     drm_connector_init(drm, connector, &gf_connector_funcs, conn_type);
+// #endif
 
     drm_connector_helper_add(connector, &gf_connector_helper_funcs);
 

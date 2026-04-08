@@ -263,6 +263,14 @@ typedef struct _VCP_INFO
     CBIOS_U8     SignOnMsg[80];   // 70 bytes defined in vbios. reserve some bytes for string operation.
     CBIOS_U8     VBiosEditTime[20];  //14 bytes defined in vbios.  reserve some bytes for string operation.
     CBIOS_U8     FwName[10];  //8 bytes defined in vbios.  reserve some bytes for string operation.
+struct
+{
+    CBIOS_U8 VGA_CONN_TYPE;
+    CBIOS_U8 DP1_CONN_TYPE;
+    CBIOS_U8 DP2_CONN_TYPE;
+    CBIOS_U8 DP3_CONN_TYPE;
+    CBIOS_U8 DP4_CONN_TYPE;
+};
 }VCP_INFO, *PVCP_INFO;
 #endif /* _CBIOS_TYPES_H_ */
 

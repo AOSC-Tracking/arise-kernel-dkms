@@ -370,12 +370,17 @@ CBIOS_VOID cbLoadDefaultVCPData(PVCP_INFO pVCP, CBIOS_U32 rom_len)
         pVCP->FeatureSwitch.IsEclkConfigEnable = 1;
     }
 
+    pVCP->VGA_CONN_TYPE = CBIOS_VGA_CONN;
+    pVCP->DP1_CONN_TYPE = CBIOS_HDMI_CONN;
+    pVCP->DP2_CONN_TYPE = CBIOS_DP_CONN;
+    pVCP->DP3_CONN_TYPE = CBIOS_DP_CONN;
+    pVCP->DP4_CONN_TYPE = CBIOS_DP_CONN;
 }
 
 
 CBIOS_VOID cbParseVCPInfo(PCBIOS_EXTENSION_COMMON pcbe, PVCP_INFO pVCP, PVCP_INIT_DATA pVCPInitData, PCBIOS_VOID VCPBase, CBIOS_U32 RomLength)
 {
-    CBIOS_U32  i = 0;
+    CBIOS_U32  i = 0, SupDevices;
     PCBIOS_U16 pVCP_BootDevPriorityAddr = CBIOS_NULL;
     PCBIOS_U8  pByte = CBIOS_NULL;
     VCP_FEATURESWITCH FeatureSwitch = {0};
@@ -388,6 +393,45 @@ CBIOS_VOID cbParseVCPInfo(PCBIOS_EXTENSION_COMMON pcbe, PVCP_INFO pVCP, PVCP_INI
     pVCP->SubSystemID = cb_swab16(pVCPInitData->VCP_SubSystemID);
     pVCP->SupportDevices = cb_swab16(pVCPInitData->VCP_SupportDevices);
     pVCP->SupportDevices = cbConvertVBiosDevBit2CBiosDevBit(pVCP->SupportDevices);
+
+    if (pVCP->Version > 8 && (pcbe->ChipID == CHIPID_ARISE2030 || pcbe->ChipID == CHIPID_ARISE2020))
+    {
+        SupDevices = pVCP->SupportDevices;
+        pVCP->VGA_CONN_TYPE = pVCPInitData->VGA_CONN_TYPE;
+        pVCP->DP1_CONN_TYPE = pVCPInitData->DP1_CONN_TYPE;
+        pVCP->DP2_CONN_TYPE = pVCPInitData->DP2_CONN_TYPE;
+        pVCP->DP3_CONN_TYPE = pVCPInitData->DP3_CONN_TYPE;
+        pVCP->DP4_CONN_TYPE = pVCPInitData->DP4_CONN_TYPE;
+        if (!pVCPInitData->VGA_CONN_TYPE)
+        {
+            SupDevices &= ~CBIOS_TYPE_CRT;
+        }
+        if (!pVCPInitData->DP1_CONN_TYPE)
+        {
+            SupDevices &= ~CBIOS_TYPE_DP1;
+        }
+        if (!pVCPInitData->DP2_CONN_TYPE)
+        {
+            SupDevices &= ~CBIOS_TYPE_DP2;
+        }
+        if (!pVCPInitData->DP3_CONN_TYPE)
+        {
+            SupDevices &= ~CBIOS_TYPE_DP3;
+        }
+        if (!pVCPInitData->DP4_CONN_TYPE)
+        {
+            SupDevices &= ~CBIOS_TYPE_DP4;
+        }
+        pVCP->SupportDevices = SupDevices;
+    }
+    else
+    {
+        pVCP->VGA_CONN_TYPE = CBIOS_VGA_CONN;
+        pVCP->DP1_CONN_TYPE = CBIOS_HDMI_CONN;
+        pVCP->DP2_CONN_TYPE = CBIOS_DP_CONN;
+        pVCP->DP3_CONN_TYPE = CBIOS_DP_CONN;
+        pVCP->DP4_CONN_TYPE = CBIOS_DP_CONN;
+    }
 
     // feature switch
     FeatureSwitch = cb_swab32(pVCPInitData->VCP_FeatureSwitch);

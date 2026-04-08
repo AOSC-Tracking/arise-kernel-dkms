@@ -88,6 +88,9 @@ int pm_restore_state(adapter_t *adapter)
     vidsch_restore(adapter);
     util_print_time("vidsch_restore finish, cur time");
 
+    vidsch_selftest(adapter);
+    util_print_time("vidsch_selftest finish, cur time");
+
     cm_restore(adapter);
     util_print_time("cm_restore finish, cur time");
 

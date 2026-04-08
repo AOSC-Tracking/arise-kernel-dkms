@@ -949,6 +949,18 @@ int vidmm_save_allocation(gpu_device_t *device, vidmm_allocation_t *allocation)
     return result;
 }
 
+void vidmm_unsave_allocation(gpu_device_t *device, vidmm_allocation_t *allocation)
+{
+    adapter_t       *adapter     = device->adapter;
+
+    if (!allocation->status.need_restore)
+        return;
+
+    allocation->status.need_restore = FALSE;
+
+    vidmmi_release_system_memory(adapter, allocation);
+}
+
 void vidmm_restore_allocation(gpu_device_t *device, vidmm_allocation_t *allocation)
 {
     adapter_t       *adapter     = device->adapter;

@@ -300,6 +300,7 @@ CBiosI2CDataRead(PCBIOS_VOID pvcbe, PCBIOS_PARAM_I2C_DATA pCBParamI2CData)
     PCBIOS_DEVICE_COMMON pDevCommon = CBIOS_NULL;
     CBIOS_U32 PortNumber = 0;
     CBIOS_STATUS Status = CBIOS_ER_NOT_YET_IMPLEMENTED;
+    CBIOS_BOOL  bVgaPort = CBIOS_FALSE;
 
     if (pCBParamI2CData == CBIOS_NULL)
     {
@@ -311,10 +312,24 @@ CBiosI2CDataRead(PCBIOS_VOID pvcbe, PCBIOS_PARAM_I2C_DATA pCBParamI2CData)
     {
         pDevCommon = cbGetDeviceCommon(&pcbe->DeviceMgr, pCBParamI2CData->DeviceId);
         PortNumber = pDevCommon->I2CBus;
+        if(pCBParamI2CData->DeviceId == CBIOS_TYPE_CRT)
+        {
+            bVgaPort = CBIOS_TRUE;
+        }
     }
     else
     {
         PortNumber = pCBParamI2CData->PortNumber;
+        pDevCommon = cbGetDeviceCommon(&pcbe->DeviceMgr, CBIOS_TYPE_CRT);
+        if(PortNumber == pDevCommon->I2CBus)
+        {
+            bVgaPort = CBIOS_TRUE;
+        }
+    }
+
+    if(bVgaPort && (pCBParamI2CData->RequestType == CBIOS_I2CDDCCI) && pcbe->bSzwCustomer)
+    {
+        return CBIOS_ER_NOT_YET_IMPLEMENTED;
     }
 
     if (PortNumber < CBIOS_MAX_I2CBUS)
@@ -339,6 +354,7 @@ CBiosI2CDataWrite(PCBIOS_VOID pvcbe, PCBIOS_PARAM_I2C_DATA pCBParamI2CData)
     PCBIOS_DEVICE_COMMON pDevCommon = CBIOS_NULL;
     CBIOS_U32 PortNumber = 0;
     CBIOS_STATUS Status = CBIOS_ER_NOT_YET_IMPLEMENTED;
+    CBIOS_BOOL  bVgaPort = CBIOS_FALSE;
 
     if (pCBParamI2CData == CBIOS_NULL)
     {
@@ -350,10 +366,24 @@ CBiosI2CDataWrite(PCBIOS_VOID pvcbe, PCBIOS_PARAM_I2C_DATA pCBParamI2CData)
     {
         pDevCommon = cbGetDeviceCommon(&pcbe->DeviceMgr, pCBParamI2CData->DeviceId);
         PortNumber = pDevCommon->I2CBus;
+        if(pCBParamI2CData->DeviceId == CBIOS_TYPE_CRT)
+        {
+            bVgaPort = CBIOS_TRUE;
+        }
     }
     else
     {
         PortNumber = pCBParamI2CData->PortNumber;
+        pDevCommon = cbGetDeviceCommon(&pcbe->DeviceMgr, CBIOS_TYPE_CRT);
+        if(PortNumber == pDevCommon->I2CBus)
+        {
+            bVgaPort = CBIOS_TRUE;
+        }
+    }
+
+    if(bVgaPort && (pCBParamI2CData->RequestType == CBIOS_I2CDDCCI) && pcbe->bSzwCustomer)
+    {
+        return CBIOS_ER_NOT_YET_IMPLEMENTED;
     }
 
     if (PortNumber < CBIOS_MAX_I2CBUS)
@@ -1002,6 +1032,32 @@ CBiosQueryMonitorAttribute(PCBIOS_VOID pvcbe, PCBiosMonitorAttribute pMonitorAtt
     }
 
     return cbDevQueryMonitorAttribute(pcbe, pDevCommon, pMonitorAttribute);
+}
+
+DLLEXPORTS CBIOS_STATUS
+CBiosQueryPortAttribute(PCBIOS_VOID pvcbe, PCBiosPortAttribute pPortAttribute)
+{
+    PCBIOS_EXTENSION_COMMON pcbe = (PCBIOS_EXTENSION_COMMON) pvcbe;
+    PCBIOS_DEVICE_COMMON pDevCommon = CBIOS_NULL;
+
+    if(pPortAttribute == CBIOS_NULL || pPortAttribute->DeviceId == CBIOS_TYPE_NONE)
+    {
+        cbDebugPrint((MAKE_LEVEL(GENERIC, ERROR), "%s: the 2nd param is CBIOS_NULL!\n", FUNCTION_NAME));
+        return CBIOS_ER_NULLPOINTER;
+    }
+
+    pDevCommon = pcbe->DeviceMgr.pDeviceArray[cbConvertDeviceBit2Index(pPortAttribute->DeviceId)];
+
+    if(pDevCommon == CBIOS_NULL)
+    {
+        cbDebugPrint((MAKE_LEVEL(GENERIC, ERROR), "%s: pDevCommon is CBIOS_NULL!\n", FUNCTION_NAME));
+        return CBIOS_ER_NULLPOINTER;
+    }
+
+    pPortAttribute->PortConnType = pDevCommon->PortConnType;
+    pPortAttribute->SupportMonitorType = pDevCommon->SupportMonitorType;
+    
+    return  CBIOS_OK;    
 }
 
 #ifndef UEFI_DIAGTOOL
@@ -1732,4 +1788,129 @@ CBiosGetSliceNum(CBIOS_IN PCBIOS_VOID pvcbe, CBIOS_OUT PCBIOS_U8 pSliceNum, CBIO
     }
 
     return status;
+}
+
+DLLEXPORTS CBIOS_STATUS
+CBiosFlashWriteData(PCBIOS_VOID pvcbe, CBIOS_U32 Addr, PCBIOS_UCHAR Buffer, CBIOS_U32 Size)
+{
+    PCBIOS_EXTENSION_COMMON pcbe = (PCBIOS_EXTENSION_COMMON)pvcbe;
+    CBIOS_STATUS status = CBIOS_ER_INTERNAL;
+    CBIOS_U32 i = 0, j = 0, SectorNum = 0, UnAlignByte = 0;
+    CBIOS_U32 ulRet = 0;
+    CBIOS_U8  Read_Data[4] = {0};
+    CBIOS_U8  ulRemainder = 0;
+
+    if(cbSF_Address_Check(pcbe, Addr, Size) != CBIOS_OK)
+    {
+        cbDebugPrint((MAKE_LEVEL(GENERIC, ERROR), "%s: address check fail\n", FUNCTION_NAME));
+        return status;
+    }
+    cbSF_Init(pcbe);
+
+    SectorNum = (Size / FP_SECTOR_SIZE);
+    if(Size > SectorNum*FP_SECTOR_SIZE)
+    {
+        UnAlignByte = Size - (SectorNum*FP_SECTOR_SIZE);
+    }
+
+    for(j = 0; j < SectorNum; j++)
+    {
+        cbSF_Sector_Erase(pcbe, Addr + j * FP_SECTOR_SIZE);
+        for(i = 0; i < FP_SECTOR_SIZE/4; i++)
+        {
+            cbSF_Write_Data(pcbe, Addr + j * FP_SECTOR_SIZE + i*4, Buffer + i*4, 4);
+        }
+        //read out and verify
+        for(i = 0; i < FP_SECTOR_SIZE/4; i++)
+        {
+            cbSF_Read_Data(pcbe, Addr + j * FP_SECTOR_SIZE + i*4, Read_Data, 4);
+            if(cb_memcmp(Read_Data, Buffer + i*4, 4))
+            {
+                cbDebugPrint((MAKE_LEVEL(GENERIC, ERROR), "Write Data Error: addr:%08x\n",Addr + j*FP_SECTOR_SIZE + i*4));
+                return status;
+            }
+        }
+        Buffer += FP_SECTOR_SIZE;
+    }
+    if(UnAlignByte)
+    {
+        ulRet = UnAlignByte / 4;
+        ulRemainder = UnAlignByte % 4;
+        cbSF_Sector_Erase(pcbe, Addr + SectorNum*FP_SECTOR_SIZE);
+        for(i = 0; i < ulRet; i++)
+        {
+            cbSF_Write_Data(pcbe, Addr + SectorNum*FP_SECTOR_SIZE + i*4, Buffer + i*4, 4);
+        }
+        //read out and verify
+        for(i = 0; i < ulRet; i++)
+        {
+            cbSF_Read_Data(pcbe, Addr + SectorNum*FP_SECTOR_SIZE + i*4, Read_Data, 4);
+            if(cb_memcmp(Read_Data, Buffer + i*4, 4))
+            {
+                cbDebugPrint((MAKE_LEVEL(GENERIC, ERROR), "Write Data Error: addr:%08x\n",Addr + SectorNum*FP_SECTOR_SIZE + i*4));
+                return status;
+            }
+        }
+
+        if(ulRemainder)
+        {
+            cbSF_Write_Data(pcbe, Addr + SectorNum*FP_SECTOR_SIZE + ulRet*4, Buffer + ulRet*4, ulRemainder);
+            cbSF_Read_Data(pcbe, Addr + SectorNum*FP_SECTOR_SIZE + ulRet*4, Read_Data, ulRemainder);
+            //read out and verify
+            if(cb_memcmp(Read_Data, Buffer + ulRet*4, ulRemainder))
+            {
+                cbDebugPrint((MAKE_LEVEL(GENERIC, ERROR), "Write Data Error: addr:%08x\n",Addr + SectorNum*FP_SECTOR_SIZE + ulRet*4));
+                return status;
+            }
+        }
+    }
+
+    return CBIOS_OK;
+}
+
+DLLEXPORTS CBIOS_STATUS
+CBiosFlashReadData(PCBIOS_VOID pvcbe, CBIOS_U32 Addr, PCBIOS_UCHAR Buffer, CBIOS_U32 Size)
+{
+    PCBIOS_EXTENSION_COMMON pcbe = (PCBIOS_EXTENSION_COMMON)pvcbe;
+    CBIOS_STATUS status = CBIOS_ER_INTERNAL;
+    CBIOS_U32 i = 0, j = 0, SectorNum = 0, UnAlignByte = 0;
+    CBIOS_U32 ulRet = 0;
+    CBIOS_U8  ulRemainder = 0;
+
+    if(cbSF_Address_Check(pcbe, Addr, Size) != CBIOS_OK)
+    {
+        cbDebugPrint((MAKE_LEVEL(GENERIC, ERROR), "%s: address check fail\n", FUNCTION_NAME));
+        return status;
+    }
+    cbSF_Init(pcbe);
+
+    SectorNum = (Size / FP_SECTOR_SIZE);
+    if(Size > SectorNum * FP_SECTOR_SIZE)
+    {
+        UnAlignByte = Size - (SectorNum * FP_SECTOR_SIZE);
+    }
+
+    for(j = 0; j < SectorNum; j++)
+    {
+        for(i = 0; i < FP_SECTOR_SIZE/4; i++)
+        {
+            cbSF_Read_Data(pcbe, Addr + j * FP_SECTOR_SIZE + i*4, Buffer + i*4, 4);
+        }
+        Buffer += FP_SECTOR_SIZE;
+    }
+    if(UnAlignByte)
+    {
+        ulRet = UnAlignByte / 4;
+        ulRemainder = UnAlignByte % 4;
+        for(i = 0; i < ulRet; i++)
+        {
+            cbSF_Read_Data(pcbe, Addr + SectorNum*FP_SECTOR_SIZE + i*4, Buffer + i*4, 4);
+        }
+        if(ulRemainder)
+        {
+            cbSF_Read_Data(pcbe, Addr + SectorNum*FP_SECTOR_SIZE + ulRet*4, Buffer + ulRet*4, ulRemainder);
+        }
+    }
+
+    return CBIOS_OK;
 }

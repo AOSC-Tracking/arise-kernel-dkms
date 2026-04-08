@@ -95,6 +95,7 @@ enum gf_ioctl_nr
     ioctl_nr_rm_hw_context = 32,
 
     ioctl_nr_cil2_misc = 33,
+    ioctl_nr_flash_operation = 34,
 
     ioctl_nr_video = 36,
     ioctl_nr_create_di_context = 37,
@@ -150,5 +151,6 @@ enum gf_ioctl_nr
 #define GF_IOCTL_KMS_GET_PIPE_FROM_CRTC    GF_IOWR(DRM_COMMAND_BASE + ioctl_nr_kms_get_pipe_from_crtc, gf_kms_get_pipe_from_crtc_t)
 
 #define GF_IOCTL_CIL2_MISC                 GF_IOWR(DRM_COMMAND_BASE + ioctl_nr_cil2_misc, gf_cil2_misc_t)
+#define GF_IOCTL_FLASH_OPERATION           GF_IOWR(DRM_COMMAND_BASE + ioctl_nr_flash_operation, gf_flash_param_t)
 
 #endif //__GF_IOCTL_H__

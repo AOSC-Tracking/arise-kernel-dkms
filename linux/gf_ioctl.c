@@ -506,6 +506,15 @@ int gf_ioctl_get_perf_event(struct drm_device *dev, void *data,struct drm_file *
     return ret;
 }
 
+int gf_ioctl_flash_operation(struct drm_device *dev, void *data,struct drm_file *filp)
+{
+    gf_file_t *priv = filp->driver_priv;
+    gf_card_t *gf = priv->card;
+    gf_flash_param_t *flash_param = (gf_flash_param_t *)data;
+
+    return disp_flash_operation(gf->disp_info, flash_param);
+}
+
 struct drm_ioctl_desc gf_ioctls[] =
 {
 #define GF_IOCTL_DEF_DRV(ioctl, _func, _flags)     \
@@ -550,4 +559,5 @@ struct drm_ioctl_desc gf_ioctls[] =
     GF_IOCTL_DEF_DRV(GF_IOCTL_DRM_BEGIN_CPU_ACCESS,gf_ioctl_gem_begin_cpu_access,DRM_AUTH|DRM_RENDER_ALLOW),
     GF_IOCTL_DEF_DRV(GF_IOCTL_DRM_END_CPU_ACCESS,gf_ioctl_gem_end_cpu_access,DRM_AUTH|DRM_RENDER_ALLOW),
     GF_IOCTL_DEF_DRV(GF_IOCTL_KMS_GET_PIPE_FROM_CRTC,gf_ioctl_kms_get_pipe_from_crtc,DRM_AUTH|DRM_RENDER_ALLOW),
+    GF_IOCTL_DEF_DRV(GF_IOCTL_FLASH_OPERATION,gf_ioctl_flash_operation,DRM_AUTH|DRM_RENDER_ALLOW),
 };

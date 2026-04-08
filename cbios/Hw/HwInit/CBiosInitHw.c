@@ -37,6 +37,7 @@
 #define CBIOS_ICLK_DEFAULT 700
 #define CBIOS_VCLK_DEFAULT 350
 
+#define E3K_PMP_BASE         0x70000
 #define E3K_PMPTAG_OFFSET    0x70020
 #define E3K_PMPVER_OFFSET    0x70024
 #define E3K_PMPTAG_SIZE    4
@@ -1257,6 +1258,7 @@ static CBIOS_VOID cbGetPMPInfo(PCBIOS_VOID pvcbe)
     PCBIOS_EXTENSION_COMMON pcbe = (PCBIOS_EXTENSION_COMMON)pvcbe;
     CBIOS_UCHAR     PMPVer[E3K_PMPVER_SIZE];
     CBIOS_UCHAR     PMPTag[E3K_PMPTAG_SIZE];
+    CBIOS_UCHAR     CustomerID[4];
     CBIOS_U8    DateIndex = 0, TimeIndex = 0;
     CBIOS_U8    Count = 0;
     CBIOS_U8 i = 0;
@@ -1268,7 +1270,7 @@ static CBIOS_VOID cbGetPMPInfo(PCBIOS_VOID pvcbe)
 
     cb_memset((PCBIOS_VOID)(PMPVer), 0, sizeof(PMPVer));
     cb_memset((PCBIOS_VOID)(PMPTag), 0, sizeof(PMPTag));
-
+    cb_memset((PCBIOS_VOID)(CustomerID), 0, sizeof(CustomerID));
 
     for(i = 0; i < E3K_PMPTAG_SIZE; i++)
     {
@@ -1294,6 +1296,19 @@ static CBIOS_VOID cbGetPMPInfo(PCBIOS_VOID pvcbe)
             }
         }
         cb_memcpy(pcbe->PMPVer, PMPVer, E3K_PMPVER_SIZE);
+        if(!cb_strncmp(PMPVer, (CBIOS_UCHAR*)"SZW", 3))
+        {
+            pcbe->bSzwCustomer = CBIOS_TRUE;
+        }
+
+        CustomerID[0] = cb_ReadU8(pcbe->pAdapterContext, E3K_PMP_BASE+0xCDE0);
+        CustomerID[1] = cb_ReadU8(pcbe->pAdapterContext, E3K_PMP_BASE+0xCDE1);
+
+        if(!cb_strncmp(CustomerID, (CBIOS_UCHAR*)"YT", 2)) // 0x7CDE0 = "Y", 0x7CDE1 = "T"
+        {
+            pcbe->bYTCustomer = CBIOS_TRUE;
+        }
+
         cbDebugPrint((MAKE_LEVEL(GENERIC, INFO),"Firmware timing table version:%s Build Time: %s %s \n", PMPVer, PMPVer+DateIndex, PMPVer+TimeIndex));
     }
     else
@@ -1365,15 +1380,23 @@ CBIOS_STATUS cbInitChip(PCBIOS_VOID pvcbe)
     //force high & enable new feature
     cbMMIOWriteReg(pcbe, CR_A5, 0x08, 0x00);
 
-    //prefetch 8 line
+    //prefetch 4 line
+    //HardWare bug:enable panel upscaler and enable SS at the same time,SS will display not correctly if prefetch 8 line
 
+    //CR_8F write only and only can be written with IO method on the chip Arise/E3k/ACE
     cb_WriteU8(pcbe->pAdapterContext, CB_CRT_ADDR_REG, 0x8f);
-    cb_WriteU8(pcbe->pAdapterContext, CB_CRT_DATA_REG, 0x80);
+    cb_WriteU8(pcbe->pAdapterContext, CB_CRT_DATA_REG, 0x40);
+    cbBiosMMIOWriteReg(pcbe, CR_8F, 0x40, (CBIOS_U8)~0xc0, IGA2);
+    cbBiosMMIOWriteReg(pcbe, CR_8F, 0x40, (CBIOS_U8)~0xc0, IGA3);
+    cbBiosMMIOWriteReg(pcbe, CR_8F, 0x40, (CBIOS_U8)~0xc0, IGA4);
 
+    // prefetch 8 line
+    // cb_WriteU8(pcbe->pAdapterContext, CB_CRT_ADDR_REG, 0x8f);
+    // cb_WriteU8(pcbe->pAdapterContext, CB_CRT_DATA_REG, 0x80);
 
-    cbBiosMMIOWriteReg(pcbe, CR_8F, 0x80, (CBIOS_U8)~0xc0, IGA2);
-    cbBiosMMIOWriteReg(pcbe, CR_8F, 0x80, (CBIOS_U8)~0xc0, IGA3);
-    cbBiosMMIOWriteReg(pcbe, CR_8F, 0x80, (CBIOS_U8)~0xc0, IGA4);
+    // cbBiosMMIOWriteReg(pcbe, CR_8F, 0x80, (CBIOS_U8)~0xc0, IGA2);
+    // cbBiosMMIOWriteReg(pcbe, CR_8F, 0x80, (CBIOS_U8)~0xc0, IGA3);
+    // cbBiosMMIOWriteReg(pcbe, CR_8F, 0x80, (CBIOS_U8)~0xc0, IGA4);
 
     // set HPD signal to high level active if this feature enabled
     if(pcbe->FeatureSwitch.HPDActiveHighEnable)

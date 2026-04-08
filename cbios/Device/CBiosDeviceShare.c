@@ -163,10 +163,10 @@ static CBIOS_BOOL cbGetEDID(PCBIOS_EXTENSION_COMMON pcbe, PCBIOS_DEVICE_COMMON p
                 ExtBlockCount = EDIDData[0x7E];
             }
 
-            if(ExtBlockCount > CBIOS_EDIDMAXBLOCKCOUNT - 1)
+            if(ExtBlockCount > CBIOS_EDID_MAX_BLK_CNT - 1)
             {
-                cbDebugPrint((MAKE_LEVEL(GENERIC, ERROR),"cbGetEDID: ExtBlockCount > 7, need refine!\n"));
-                ExtBlockCount = CBIOS_EDIDMAXBLOCKCOUNT - 1;
+                cbDebugPrint((MAKE_LEVEL(GENERIC, ERROR),"cbGetEDID: ExtBlockCount > %d, need refine!\n", CBIOS_EDID_MAX_BLK_CNT - 1));
+                ExtBlockCount = CBIOS_EDID_MAX_BLK_CNT - 1;
                 //ASSERT(CBIOS_FALSE);
             }
 
@@ -263,10 +263,10 @@ static CBIOS_BOOL cbGetDeviceSignature(PCBIOS_EXTENSION_COMMON pcbe, PCBIOS_DEVI
                 else
                 {
                     // get the flag of checksum in the remaining blocks
-                    if (EDIDBlockNum > CBIOS_EDIDMAXBLOCKCOUNT - 1)
+                    if (EDIDBlockNum > CBIOS_EDID_MAX_BLK_CNT - 1)
                     {
                         cbDebugPrint((MAKE_LEVEL(GENERIC, DEBUG),"cbGetDeviceSignature: EDIDBlockNum > 7, here read the first 8 blocks!\n"));
-                        EDIDBlockNum = CBIOS_EDIDMAXBLOCKCOUNT - 1;
+                        EDIDBlockNum = CBIOS_EDID_MAX_BLK_CNT - 1;
                     }
 
                     for (i = 1; i < EDIDBlockNum + 1; i++)
@@ -317,7 +317,7 @@ static CBIOS_BOOL cbIsDeviceChanged(PCBIOS_EXTENSION_COMMON pcbe, PCBIOS_DEVICE_
         }
 
         //Compare the signature--checksum
-        for (i = 0; i < CBIOS_EDIDMAXBLOCKCOUNT; i++)
+        for (i = 0; i < CBIOS_EDID_MAX_BLK_CNT; i++)
         {
             ChecksumFlagChanged = cb_memcmp(pDevCommon->ConnectedDevSignature.ExtFlagChecksum[i], DeviceSignature.ExtFlagChecksum[i], EXTFLAGCHECKSUMLENTH);
             if (0 != ChecksumFlagChanged)
@@ -478,7 +478,7 @@ CBIOS_BOOL cbIsDeviceChangedByEdid(PCBIOS_VOID pvcbe, PCBIOS_DEVICE_COMMON pDevC
             &pEDIDData[MONITORIDINDEX], MONITORIDLENGTH);
         if(result == 0)
         {
-            for (i = 0; i < CBIOS_EDIDMAXBLOCKCOUNT; i++)
+            for (i = 0; i < CBIOS_EDID_MAX_BLK_CNT; i++)
             {
                 ChecksumFlagChanged = cb_memcmp(pDevCommon->ConnectedDevSignature.ExtFlagChecksum[i],
                               &pEDIDData[i * EDID_BLOCK_SIZE_SPEC + EXTFLAGCHECKSUMINDEX], EXTFLAGCHECKSUMLENTH);
@@ -523,10 +523,10 @@ CBIOS_BOOL cbUpdateDeviceSignature(PCBIOS_VOID pvcbe, PCBIOS_DEVICE_COMMON pDevC
     if (0 < EDIDBlockNum)
     {
         // get the flag of checksum in the remaining blocks
-        if (EDIDBlockNum > CBIOS_EDIDMAXBLOCKCOUNT - 1)
+        if (EDIDBlockNum > CBIOS_EDID_MAX_BLK_CNT - 1)
         {
             cbDebugPrint((MAKE_LEVEL(GENERIC, WARNING),"%s: EDIDBlockNum > 3, here copy the first 4 blocks!\n", FUNCTION_NAME));
-            EDIDBlockNum = CBIOS_EDIDMAXBLOCKCOUNT - 1;
+            EDIDBlockNum = CBIOS_EDID_MAX_BLK_CNT - 1;
         }
 
         // copy the flag of checksum in remaining blocks
@@ -763,7 +763,7 @@ CBIOS_STATUS cbGetDeviceELD(PCBIOS_VOID pvcbe, CBIOS_ACTIVE_TYPE DeviceType, PCB
         {
             for (i = 0; i < pELD->ELD_Data.SAD_Count; i++)
             {
-                *(pEldPayLoad++) = pMonitorAttrib->CEA_SADs[i][0];
+                *(pEldPayLoad++) = (pMonitorAttrib->CEA_SADs[i][0] & 0xF8) | 0x01; // Set Bit2~0(Max_num_channels-1) = 1, 2 Channels
                 *(pEldPayLoad++) = pMonitorAttrib->CEA_SADs[i][1];
                 *(pEldPayLoad++) = pMonitorAttrib->CEA_SADs[i][2];
                 Length += 3;

@@ -86,6 +86,7 @@ typedef struct
     unsigned int video_irq_info_all;
     int runtime_pm;
     unsigned long long primary_addr[MAX_CORE_CRTCS];
+    unsigned int cbios_flags;
 }gf_card_t;
 
 struct gf_file
@@ -116,6 +117,9 @@ extern int  gf_card_init(gf_card_t *gf, void *pdev);
 extern int  gf_card_deinit(gf_card_t *gf);
 extern int  gf_init_modeset(struct drm_device *dev);
 extern void  gf_deinit_modeset(struct drm_device *dev);
+extern int gf_vkms_init_modeset(struct drm_device *ddev);
+extern void gf_vkms_deinit_modeset(struct drm_device *ddev);
+
 extern int gf_debugfs_crtc_dump(struct seq_file* file, struct drm_device* dev, int index);
 extern int gf_debugfs_clock_dump(struct seq_file* file, struct drm_device* dev);
 extern int gf_debugfs_displayinfo_dump(struct seq_file* file, struct drm_device* dev);

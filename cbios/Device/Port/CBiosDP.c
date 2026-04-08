@@ -199,6 +199,7 @@ static CBIOS_BOOL cbDPPort_DeviceDetect(PCBIOS_EXTENSION_COMMON pcbe, PCBIOS_DEV
     CBIOS_MODULE_INDEX DPModuleIndex = CBIOS_MODULE_INDEX_INVALID;
     CBIOS_MODULE_INDEX HDMIModuleIndex = CBIOS_MODULE_INDEX_INVALID;
     DP_EPHY_MODE  Mode;
+    CBIOS_DP_INT_PARA DpIntPara = {0};
 
     if ((pDevCommon == CBIOS_NULL) || (!(pDevCommon->DeviceType & ALL_DP_TYPES)))
     {
@@ -211,6 +212,14 @@ static CBIOS_BOOL cbDPPort_DeviceDetect(PCBIOS_EXTENSION_COMMON pcbe, PCBIOS_DEV
     if(CBIOS_MODULE_INDEX_INVALID == DPModuleIndex)
     {
         cbDebugPrint((MAKE_LEVEL(DP, ERROR), "Invalid DP index in detect device 0x%x!\n", pDevCommon->DeviceType));
+        return CBIOS_FALSE;
+    }
+
+    cbDPMonitor_GetInt(pcbe, &pDpContext->DPMonitorContext, &DpIntPara);
+    if(pcbe->bSzwCustomer && (DpIntPara.IntType == 2 || DpIntPara.IntType == 0))  // szw plug out not detect
+    {
+        // cbDebugPrint((MAKE_LEVEL(DP, INFO), "Non monitor is plugged in on port 0x%x, FullDetect:%d!\n",
+        //                          pDevCommon->DeviceType, FullDetect));
         return CBIOS_FALSE;
     }
 
@@ -233,7 +242,14 @@ static CBIOS_BOOL cbDPPort_DeviceDetect(PCBIOS_EXTENSION_COMMON pcbe, PCBIOS_DEV
         {
             cbPHY_DP_SelectEphyMode(pcbe, DPModuleIndex, DP_EPHY_TMDS_MODE);
             pDpContext->DPPortParams.DPEphyMode = DP_EPHY_TMDS_MODE;
-            cbDIU_DP_SetInterruptMode(pcbe, DPModuleIndex, CBIOS_FALSE);
+            if(pcbe->CbiosFlags & GF_RUN_HDCP_CTS)
+            {
+                cbDIU_DP_SetInterruptMode(pcbe, DPModuleIndex, CBIOS_TRUE);
+            }
+            else
+            {
+                cbDIU_DP_SetInterruptMode(pcbe, DPModuleIndex, CBIOS_FALSE);
+            }
         }
     }
 
@@ -388,6 +404,164 @@ static CBIOS_VOID cbDPPort_QueryMonitorAttribute(PCBIOS_EXTENSION_COMMON pcbe, P
     }
 
     cbTraceExit(DP);
+}
+
+CBIOS_VOID cbDPPort_WriteFIFO(PCBIOS_VOID pvcbe, CBIOS_ACTIVE_TYPE DeviceType, CBIOS_U8 FIFOIndex, CBIOS_U8 *pDataBuff, CBIOS_U32 BuffLen)
+{
+    PCBIOS_EXTENSION_COMMON pcbe = (PCBIOS_EXTENSION_COMMON)pvcbe;
+    PCBIOS_DEVICE_COMMON    pDevCommon  = cbGetDeviceCommon(&pcbe->DeviceMgr, DeviceType);
+    CBIOS_MONITOR_TYPE      MonitorType = pDevCommon->CurrentMonitorType;
+    CBIOS_BOOL              bDPDevice = CBIOS_FALSE;
+    CBIOS_U8                SR47Value = cbMMIOReadReg(pcbe, SR_47);
+    CBIOS_U32               i = 0;
+
+    if ((MonitorType == CBIOS_MONITOR_TYPE_DP) || (MonitorType == CBIOS_MONITOR_TYPE_PANEL))
+    {
+        bDPDevice = CBIOS_TRUE;
+    }
+
+    if (DeviceType == CBIOS_TYPE_DP1)
+    {
+        //select LUT
+        if (bDPDevice)
+        {
+            cbMMIOWriteReg(pcbe, SR_47, 0x06, 0xF0);
+        }
+        else
+        {
+            cbMMIOWriteReg(pcbe, SR_47, 0x04, 0xF0);
+        }
+    }
+    else if (DeviceType == CBIOS_TYPE_DP2)
+    {
+        //select LUT
+        if (bDPDevice)
+        {
+            cbMMIOWriteReg(pcbe, SR_47, 0x07, 0xF0);
+        }
+        else
+        {
+            cbMMIOWriteReg(pcbe, SR_47, 0x05, 0xF0);
+        }
+    }
+    else if (DeviceType == CBIOS_TYPE_DP3)
+    {
+        //select LUT
+        if (bDPDevice)
+        {
+            cbMMIOWriteReg(pcbe, SR_47, 0x0E, 0xF0);
+        }
+        else
+        {
+            cbMMIOWriteReg(pcbe, SR_47, 0x0C, 0xF0);
+        }
+    }
+    else if (DeviceType == CBIOS_TYPE_DP4)
+    {
+        //select LUT
+        if (bDPDevice)
+        {
+            cbMMIOWriteReg(pcbe, SR_47, 0x0F, 0xF0);
+        }
+        else
+        {
+            cbMMIOWriteReg(pcbe, SR_47, 0x0D, 0xF0);
+        }
+    }
+    else
+    {
+        cbDebugPrint((MAKE_LEVEL(HDMI, ERROR), "%s: invalid HDMI/DP device!\n", FUNCTION_NAME));
+        return;
+    }
+
+    cb_WriteU8(pcbe->pAdapterContext, 0x83C8, FIFOIndex);
+
+    for (i = BuffLen; i > 0; i--)
+    {
+        cb_WriteU8(pcbe->pAdapterContext, 0x83C9, pDataBuff[i - 1]);
+    }
+
+    //restore SR47
+    cbMMIOWriteReg(pcbe, SR_47, SR47Value, 0x00);
+}
+
+CBIOS_VOID cbDPPort_ReadFIFO(PCBIOS_VOID pvcbe, CBIOS_ACTIVE_TYPE DeviceType, CBIOS_U8 FIFOIndex, CBIOS_U8 *pDataBuff, CBIOS_U32 BuffLen)
+{
+    PCBIOS_EXTENSION_COMMON pcbe = (PCBIOS_EXTENSION_COMMON)pvcbe;
+    PCBIOS_DEVICE_COMMON    pDevCommon  = cbGetDeviceCommon(&pcbe->DeviceMgr, DeviceType);
+    CBIOS_MONITOR_TYPE      MonitorType = pDevCommon->CurrentMonitorType;
+    CBIOS_BOOL              bDPDevice = CBIOS_FALSE;
+    CBIOS_U8                SR47Value = cbMMIOReadReg(pcbe, SR_47);
+    CBIOS_U32               i = 0;
+
+    if ((MonitorType == CBIOS_MONITOR_TYPE_DP) || (MonitorType == CBIOS_MONITOR_TYPE_PANEL))
+    {
+        bDPDevice = CBIOS_TRUE;
+    }
+
+    if (DeviceType == CBIOS_TYPE_DP1)
+    {
+        //select LUT
+        if (bDPDevice)
+        {
+            cbMMIOWriteReg(pcbe, SR_47, 0x06, 0xF0);
+        }
+        else
+        {
+            cbMMIOWriteReg(pcbe, SR_47, 0x04, 0xF0);
+        }
+    }
+    else if (DeviceType == CBIOS_TYPE_DP2)
+    {
+        //select LUT
+        if (bDPDevice)
+        {
+            cbMMIOWriteReg(pcbe, SR_47, 0x07, 0xF0);
+        }
+        else
+        {
+            cbMMIOWriteReg(pcbe, SR_47, 0x05, 0xF0);
+        }
+    }
+    else if (DeviceType == CBIOS_TYPE_DP3)
+    {
+        //select LUT
+        if (bDPDevice)
+        {
+            cbMMIOWriteReg(pcbe, SR_47, 0x0E, 0xF0);
+        }
+        else
+        {
+            cbMMIOWriteReg(pcbe, SR_47, 0x0C, 0xF0);
+        }
+    }
+    else if (DeviceType == CBIOS_TYPE_DP4)
+    {
+        //select LUT
+        if (bDPDevice)
+        {
+            cbMMIOWriteReg(pcbe, SR_47, 0x0F, 0xF0);
+        }
+        else
+        {
+            cbMMIOWriteReg(pcbe, SR_47, 0x0D, 0xF0);
+        }
+    }
+    else
+    {
+        cbDebugPrint((MAKE_LEVEL(HDMI, ERROR), "%s: invalid HDMI/DP device!\n", FUNCTION_NAME));
+        return;
+    }
+
+    cb_WriteU8(pcbe->pAdapterContext, 0x83C7, FIFOIndex);
+
+    for (i = BuffLen; i > 0; i--)
+    {
+        pDataBuff[i - 1] = cb_ReadU8(pcbe->pAdapterContext, 0x83C9);
+    }
+
+    //restore SR47
+    cbMMIOWriteReg(pcbe, SR_47, SR47Value, 0x00);
 }
 
 static CBIOS_VOID cbDPPort_UpdateModeInfo(PCBIOS_EXTENSION_COMMON pcbe, PCBIOS_DEVICE_COMMON pDevCommon, PCBIOS_DISP_MODE_PARAMS pModeParams)
@@ -574,6 +748,7 @@ PCBIOS_DEVICE_COMMON cbDPPort_Init(PCBIOS_VOID pvcbe, PVCP_INFO pVCP, CBIOS_ACTI
         pDeviceCommon->DispSource.ModuleList.HDMIModule.Index = CBIOS_MODULE_INDEX1;
         pDeviceCommon->DispSource.ModuleList.HDCPModule.Index = CBIOS_MODULE_INDEX1;
         pDeviceCommon->DispSource.ModuleList.HDACModule.Index = CBIOS_MODULE_INDEX1;
+        pDeviceCommon->PortConnType = pVCP->DP1_CONN_TYPE;
     }
     else if (DeviceType == CBIOS_TYPE_DP2)
     {
@@ -583,6 +758,7 @@ PCBIOS_DEVICE_COMMON cbDPPort_Init(PCBIOS_VOID pvcbe, PVCP_INFO pVCP, CBIOS_ACTI
         pDeviceCommon->DispSource.ModuleList.HDMIModule.Index = CBIOS_MODULE_INDEX2;
         pDeviceCommon->DispSource.ModuleList.HDCPModule.Index = CBIOS_MODULE_INDEX2;
         pDeviceCommon->DispSource.ModuleList.HDACModule.Index = CBIOS_MODULE_INDEX2;
+        pDeviceCommon->PortConnType = pVCP->DP2_CONN_TYPE;
     }
     else if (DeviceType == CBIOS_TYPE_DP3)
     {
@@ -591,6 +767,7 @@ PCBIOS_DEVICE_COMMON cbDPPort_Init(PCBIOS_VOID pvcbe, PVCP_INFO pVCP, CBIOS_ACTI
         pDeviceCommon->DispSource.ModuleList.HDMIModule.Index = CBIOS_MODULE_INDEX3;
         pDeviceCommon->DispSource.ModuleList.HDCPModule.Index = CBIOS_MODULE_INDEX3;
         pDeviceCommon->DispSource.ModuleList.HDACModule.Index = CBIOS_MODULE_INDEX_INVALID;
+        pDeviceCommon->PortConnType = pVCP->DP3_CONN_TYPE;
     }
     else if (DeviceType == CBIOS_TYPE_DP4)
     {
@@ -599,6 +776,7 @@ PCBIOS_DEVICE_COMMON cbDPPort_Init(PCBIOS_VOID pvcbe, PVCP_INFO pVCP, CBIOS_ACTI
         pDeviceCommon->DispSource.ModuleList.HDMIModule.Index = CBIOS_MODULE_INDEX4;
         pDeviceCommon->DispSource.ModuleList.HDCPModule.Index = CBIOS_MODULE_INDEX4;
         pDeviceCommon->DispSource.ModuleList.HDACModule.Index = CBIOS_MODULE_INDEX_INVALID;
+        pDeviceCommon->PortConnType = pVCP->DP4_CONN_TYPE;
     }
 
     pDpContext->HDMIMonitorContext.pDevCommon = pDeviceCommon;
@@ -614,7 +792,11 @@ PCBIOS_DEVICE_COMMON cbDPPort_Init(PCBIOS_VOID pvcbe, PVCP_INFO pVCP, CBIOS_ACTI
     pDpContext->DPMonitorContext.SourceMaxLinkSpeed = CBIOS_DP_LINK_SPEED_5400Mbps;
     pDpContext->DPMonitorContext.bSourceSupportTPS3 = CBIOS_TRUE;
 
-    if (NO_ERROR == cb_GetRegistryParameters(pcbe->pAdapterContext, KEYNAME_DW_DP_RUN_CTS, CBIOS_FALSE, &ulTemp))
+    if (pcbe->CbiosFlags & GF_RUN_DP_CTS)
+    {
+        pDpContext->DPPortParams.bRunCTS = CBIOS_TRUE;
+    }
+    else if (NO_ERROR == cb_GetRegistryParameters(pcbe->pAdapterContext, KEYNAME_DW_DP_RUN_CTS, CBIOS_FALSE, &ulTemp))
     {
         if(ulTemp)
         {

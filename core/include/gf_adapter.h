@@ -230,7 +230,8 @@ typedef struct ctl_flags
     unsigned int  hwq_event_enable       :1;
     unsigned int  run_on_qemu_device     :1;
     unsigned int  boost                  :1;
-    unsigned int  reserved               :13;
+    unsigned int  virtual_display        :1;
+    unsigned int  reserved               :12;
 }ctl_flags_t;
 
 #define PATCH_E2UMA_FENCE_ID_LOST   (1 << 0)

@@ -27,6 +27,7 @@
 #include "gf_sink.h"
 #include "gf_splice.h"
 #include "gf_pm.h"
+#include "gf_trace.h"
 
 #if DRM_VERSION_CODE >= KERNEL_VERSION(4, 8, 0)
 
@@ -136,11 +137,22 @@ int gf_connector_atomic_set_property(struct drm_connector *connector,
     int ret = 0;
     gf_connector_t* gf_conn = to_gf_connector(connector);
     gf_connector_state_t* gf_conn_state = to_gf_conn_state(state);
+    struct drm_device *dev = connector->dev;
+    gf_card_t *gf_card = dev->dev_private;
+    disp_info_t *disp_info = (disp_info_t *)gf_card->disp_info;
 
-    ret = gf_splice_set_connector_property(state, property, val);
+    if (property == disp_info->prefer_signal_prop)
+    {
+        gf_conn->prefer_signal = val;
+        ret = 0;
+    }
+    else
+    {
+        ret = gf_splice_set_connector_property(state, property, val);
+    }
+
     if (ret)
     {
-
         DRM_ERROR("Invalid driver-private property '%s'\n", property->name);
     }
 
@@ -155,8 +167,20 @@ int gf_connector_atomic_get_property(struct drm_connector *connector,
     int ret = 0;
     gf_connector_t* gf_conn = to_gf_connector(connector);
     gf_connector_state_t* gf_conn_state = to_gf_conn_state(state);
+    struct drm_device *dev = connector->dev;
+    gf_card_t *gf_card = dev->dev_private;
+    disp_info_t *disp_info = (disp_info_t *)gf_card->disp_info;
 
-    ret = gf_splice_get_connector_property(state, property, val);
+    if (property == disp_info->prefer_signal_prop)
+    {
+        *val = gf_conn->prefer_signal;
+        ret = 0;
+    }
+    else
+    {
+        ret = gf_splice_get_connector_property(state, property, val);
+    }
+
     if (ret)
     {
         DRM_ERROR("Invalid driver-private property '%s'\n", property->name);
@@ -164,6 +188,38 @@ int gf_connector_atomic_get_property(struct drm_connector *connector,
 
     return ret;
 }
+
+#if DRM_VERSION_CODE >= KERNEL_VERSION(4, 12, 0)
+#if DRM_VERSION_CODE >= KERNEL_VERSION(5, 3, 0)
+int gf_connector_atomic_check(struct drm_connector *connector, struct drm_atomic_state *atomic_state)
+{
+    struct drm_connector_state *state = drm_atomic_get_new_connector_state(atomic_state,  connector);
+#else
+int gf_connector_atomic_check(struct drm_connector *connector, struct drm_connector_state *state)
+{
+#endif
+    gf_connector_t *gf_connector = to_gf_connector(connector);
+    struct drm_encoder *encoder = state->best_encoder;
+    gf_encoder_t *gf_encoder = to_gf_encoder(encoder);
+
+    if (gf_encoder)
+    {
+        gf_encoder->output_signal = gf_connector->prefer_signal;
+        /*
+        if (gf_encoder->output_signal == OUTPUT_SIGNAL_Y444 && !(connector->display_info.color_formats & DRM_COLOR_FORMAT_YCBCR444))
+        {
+            gf_encoder->output_signal = OUTPUT_SIGNAL_RGB;
+        }
+        else if (gf_encoder->output_signal == OUTPUT_SIGNAL_Y422 && !(connector->display_info.color_formats & DRM_COLOR_FORMAT_YCBCR422))
+        {
+            gf_encoder->output_signal = OUTPUT_SIGNAL_RGB;
+        }
+        */
+    }
+
+    return 0;
+}
+#endif
 
 struct drm_connector_state* gf_connector_duplicate_state(struct drm_connector *connector)
 {
@@ -268,6 +324,8 @@ void gf_atomic_helper_commit_tail(struct drm_atomic_state *old_state)
 #else
     bool flags = false;
 #endif
+
+    trace_gfx_atomic_commit_tail(old_state);
 
     gf_acquire_display(disp_info, DISP_FLIP_REF);
 

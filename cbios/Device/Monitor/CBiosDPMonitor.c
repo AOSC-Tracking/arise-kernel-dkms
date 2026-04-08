@@ -26,6 +26,7 @@
 #include "../../Hw/HwBlock/CBiosDIU_DP.h"
 #include "../../Hw/CBiosHwShare.h"
 #include "../../Hw/HwBlock/CBiosDIU_HDCP.h"
+#include "../../Hw/HwBlock/CBiosDIU_HDAC.h"
 
 #if DP_MONITOR_SUPPORT
 
@@ -77,6 +78,105 @@ static CBIOS_BOOL cbDPMonitor_EDPAuxPowerSeqCtrl(PCBIOS_EXTENSION_COMMON pcbe, P
         cbDIU_EDP_ControlVDDSignal(pcbe, pDPMonitorContext, DPModuleIndex, CBIOS_FALSE);
     }
     return CBIOS_TRUE;
+}
+
+static CBIOS_VOID cbDPMonitor_SetAudioInfoFrame(PCBIOS_EXTENSION_COMMON pcbe, PCBIOS_DP_MONITOR_CONTEXT pDPMonitorContext, PCBIOS_U8 FIFOIndex)
+
+{
+
+    CBIOS_ACTIVE_TYPE DeviceType = pDPMonitorContext->pDevCommon->DeviceType;
+    CBIOS_MODULE_INDEX HDACModuleIndex = CBIOS_MODULE_INDEX_INVALID;
+    CBIOS_U8 ucAAIData[32], i = 0, checksum = 0;
+    CBIOS_U32 NumofChannels = 0;
+
+    cb_memset(ucAAIData, 0, sizeof(ucAAIData));
+
+    HDACModuleIndex = cbGetModuleIndex(pcbe, DeviceType, CBIOS_MODULE_TYPE_HDAC);
+    if (HDACModuleIndex == CBIOS_MODULE_INDEX_INVALID)
+    {
+        cbDebugPrint((MAKE_LEVEL(DP, ERROR), "%s: invalid HDAC module index!\n", FUNCTION_NAME));
+        return;
+    }
+
+    //NumofChannels = cbDIU_HDAC_GetChannelNums(pcbe, HDACModuleIndex);
+    NumofChannels = 1;      // 2 Channels
+
+    ucAAIData[0] = 0;       // SDP ID (Must same with Audio Stream)
+    ucAAIData[1] = 0x84;	// Inforframe Type = 0x84
+    ucAAIData[2] = 0x1B;	// Length = 0x1B
+    ucAAIData[3] = cb_min(pDPMonitorContext->DpSinkVersion, 0x12) << 2;	// infoframe SDP Version number(DP 1.3 and newer) or DP Version(DP 1.2)
+
+    // CC2 CC1 CC0  |   Audio Channel Count
+    // ---------------------------------------
+    //  0   0   0   |   Refer to Stream Header
+    //  0   0   1   |   2ch
+    //  0   1   0   |   3ch
+    //  0   1   1   |   4ch
+    //  1   0   0   |   5ch
+    //  1   0   1   |   6ch
+    //  1   1   0   |   7ch
+    //  1   1   1   |   8ch
+    ucAAIData[4] |= NumofChannels;
+
+    // CT3 CT2 CT1 CT0  |   Audio Coding Type
+    // -------------------------------------------
+    //  0   0   0   0   |   Refer to Stream Header
+    //  0   0   0   1   |   IEC 60958 PCM[30,31]
+    //  0   0   1   0   |   AC-3
+    //  0   0   1   1   |   MPEG1 (Layer 1 & 2)
+    ucAAIData[5] |= 0x00;
+
+    // SS1 SS0  |   Sample Size
+    // --------------------------
+    //  0   0   |   Refer to Stream Header
+    //  0   1   |   16 bit
+    //  1   0   |   20 bit
+    //  1   1   |   24 bit
+    ucAAIData[6] |= 0x00;
+
+    // SF2 SF1 SF0  |   Sampling Frequency
+    // ---------------------------------------
+    //  0   0   0   |   Refer to Stream Header
+    //  0   0   1   |   32 kHz
+    //  0   1   0   |   44.1 kHz(CD)
+    //  0   1   1   |   48 kHz
+    //  1   0   0   |   88.2 kHz
+    //  1   0   1   |   96 kHz
+    //  1   1   0   |   176.4 kHz
+    //  1   1   1   |   192 kHz
+    ucAAIData[6] |= 0x00;
+
+    ucAAIData[7] = 0x00;
+
+    // CA
+    if(NumofChannels == 1)
+    {
+        ucAAIData[8] = 0;
+    }
+    else
+    {
+        ucAAIData[8] = cbDevHDACGetCAValue(pcbe, DeviceType);
+    }
+
+    ucAAIData[9] = 0x00;
+
+    //all others are 0
+    cbDPPort_WriteFIFO(pcbe, DeviceType, *FIFOIndex, ucAAIData, 32);
+    (*FIFOIndex)++;
+}
+
+static CBIOS_VOID cbDPMonitor_SetInfoFrame(PCBIOS_VOID pvcbe, PCBIOS_DP_MONITOR_CONTEXT pDPMonitorContext)
+{
+    PCBIOS_EXTENSION_COMMON pcbe = (PCBIOS_EXTENSION_COMMON)pvcbe;
+    PCBIOS_DEVICE_COMMON    pDevCommon = pDPMonitorContext->pDevCommon;
+    CBIOS_MODULE_INDEX      DPModuleIndex = cbGetModuleIndex(pcbe, pDevCommon->DeviceType, CBIOS_MODULE_TYPE_DP);
+    CBIOS_U8                FIFOIndex = 0;
+
+    // Audio Inforframe SDP
+    cbDPMonitor_SetAudioInfoFrame(pcbe, pDPMonitorContext, &FIFOIndex);
+
+    // Send
+    cbDIU_DP_SendInfoFrame(pcbe, DPModuleIndex, FIFOIndex);
 }
 
 static CBIOS_BOOL cbDPMonitor_LinkTrainingHw(PCBIOS_EXTENSION_COMMON pcbe, PCBIOS_DP_MONITOR_CONTEXT pDPMonitorContext)
@@ -522,7 +622,7 @@ CBIOS_BOOL cbDPMonitor_AuxReadEDID(PCBIOS_VOID pvcbe, PCBIOS_DP_MONITOR_CONTEXT 
                                    CBIOS_U32 ulBufferSize)
 {
     PCBIOS_EXTENSION_COMMON pcbe = (PCBIOS_EXTENSION_COMMON)pvcbe;
-    CBIOS_BOOL              bStatus = CBIOS_FALSE;
+    CBIOS_BOOL              bStatus = CBIOS_FALSE, bRet = CBIOS_FALSE;
     CBIOS_U32               i, j;
     CBIOS_U32               dTemp;
     CBIOS_UCHAR             ucChecksum;
@@ -562,18 +662,54 @@ CBIOS_BOOL cbDPMonitor_AuxReadEDID(PCBIOS_VOID pvcbe, PCBIOS_DP_MONITOR_CONTEXT 
 
     if (pHardcodedEdidBuffer == CBIOS_NULL)
     {
-        ulEdidLength = cbDIU_DP_AuxReadEDID(pcbe, DPModuleIndex, pEDIDBuffer, ulBufferSize);
-        if (ulEdidLength == 0)
-        {
-            cbDebugPrint((MAKE_LEVEL(DP, WARNING), "%s: read EDID fail through aux channel!!\n", FUNCTION_NAME));
+        CBIOS_U32      ulBlkIndex = 0;
+        CBIOS_U32      ExtBlockNum = 0;
 
-            bStatus = CBIOS_FALSE;
-            goto exitAuxReadEDID;
-        }
-        else
+        for(ulBlkIndex = 0; ulBlkIndex < ulBufferSize/EDID_BLOCK_SIZE_SPEC; ulBlkIndex++)
         {
-            bStatus = CBIOS_TRUE;
+            CBIOS_U32  ulOffsetInSeg = (ulBlkIndex * EDID_BLOCK_SIZE_SPEC) % 256;
+            CBIOS_U32  ulSegNum = (ulBlkIndex * EDID_BLOCK_SIZE_SPEC) / 256;
+            CBIOS_U8 *Buffer = pEDIDBuffer + ulBlkIndex * EDID_BLOCK_SIZE_SPEC;
+            bRet = cbDIU_DP_AuxReadEDIDOffset(pcbe, DPModuleIndex, Buffer, EDID_BLOCK_SIZE_SPEC, ulOffsetInSeg, (CBIOS_U8)ulSegNum);
+
+            if (ulBlkIndex == 0)
+            {
+                if (!bRet || cbGetCheckSum(Buffer, EDID_BLOCK_SIZE_SPEC) != 0)
+                {
+                    bStatus = CBIOS_FALSE;
+                    goto exitAuxReadEDID;
+                }
+                else
+                {
+                    bStatus = CBIOS_TRUE;
+                }
+
+                ExtBlockNum = pEDIDBuffer[0x7E];
+            }
+            else if (ulBlkIndex == 1)
+            {
+                ExtBlockNum = cbEDIDModule_GetExtBlockNum(pEDIDBuffer);
+            }
+
+            ucChecksum = cbGetCheckSum(Buffer, EDID_BLOCK_SIZE_SPEC);
+
+            if (ucChecksum != 0)
+            {
+                cbDebugPrint((MAKE_LEVEL(DP, WARNING), "%s: block %d, checksum == 0x%02x, wrong!!\n", FUNCTION_NAME, ulBlkIndex, ucChecksum));
+                cb_memset(Buffer, 0, EDID_BLOCK_SIZE_SPEC);
+            }
+
+            ulEdidLength += EDID_BLOCK_SIZE_SPEC;
+
+            if (ulBlkIndex >= ExtBlockNum)
+            {
+                break;
+            }
         }
+
+        //For CTS EDID read test item: 4.2.2.3
+        // Should always check the checksum of last edid block according to linklayer compliance test spec.
+        cbDIU_DP_AuxWriteCheckSum(pvcbe, DPModuleIndex, pEDIDBuffer[ulEdidLength - 1]);
     }
     else
     {
@@ -720,7 +856,22 @@ CBIOS_BOOL cbDPMonitor_AuxReadEDIDOffset(PCBIOS_VOID pvcbe, PCBIOS_DP_MONITOR_CO
     }
     else
     {
-        bStatus = cbDIU_DP_AuxReadEDIDOffset(pcbe, DPModuleIndex, pEDIDBuffer, ulBufferSize, ulReadEdidOffset);
+        CBIOS_U32 ulReadSize = 0;
+        while(ulReadSize < ulBufferSize)
+        {
+            CBIOS_U32  ulStartSeg = (ulReadEdidOffset + ulReadSize)/256;
+            CBIOS_U32  ulOffsetInSeg = (ulReadEdidOffset + ulReadSize) % 256;
+            CBIOS_U32  ulOneceSize = cb_min(256 - ulOffsetInSeg, ulBufferSize - ulReadSize);
+            bStatus = cbDIU_DP_AuxReadEDIDOffset(pcbe, DPModuleIndex, pEDIDBuffer+ulReadSize, ulOneceSize, ulOffsetInSeg, (CBIOS_U8)ulStartSeg);
+            if(bStatus)
+            {
+                ulReadSize += ulOneceSize;
+            }
+            else
+            {
+                goto ExitFunc;
+            }
+        }
     }
 
 ExitFunc:
@@ -1410,7 +1561,12 @@ CBIOS_VOID cbDPMonitor_OnOff(PCBIOS_VOID pvcbe, PCBIOS_DP_MONITOR_CONTEXT pDPMon
         {
             CBIOS_BOOL status;
             status = cbDPMonitor_SetUpMainLink(pcbe, pDPMonitorContext);
-            if(!status)
+            if (status)
+            {
+                // set infoframe
+                cbDPMonitor_SetInfoFrame(pcbe, pDPMonitorContext);
+            }
+            else
             {
                 cbDebugPrint((MAKE_LEVEL(DP, WARNING),"%s: setting up Main Link failed!\n", FUNCTION_NAME));
             }
@@ -1799,7 +1955,11 @@ static CBIOS_BOOL cbDPMonitor_HandleTestRequest(PCBIOS_EXTENSION_COMMON pcbe, PC
             {
                 if (cbDPMonitor_LinkTraining(pcbe, pDPMonitorContext, CBIOS_FALSE))
                 {
-                    cbDPMonitor_SetUpMainLink(pcbe, pDPMonitorContext);
+                    if (cbDPMonitor_SetUpMainLink(pcbe, pDPMonitorContext))
+                    {
+                        // the infoframe will be cleared when link_training, so need set infoframe again after retraining
+                        cbDPMonitor_SetInfoFrame(pcbe, pDPMonitorContext);
+                    }
                 }
                 pDPHandleIrqPara->bNeedDetect = 1;
                 pDPHandleIrqPara->bNeedCompEdid = 1;
@@ -1935,7 +2095,11 @@ static CBIOS_BOOL cbDPMonitor_ProcAutomatedTestRequest(PCBIOS_EXTENSION_COMMON p
             {
                 if (cbDPMonitor_LinkTraining(pcbe, pDPMonitorContext, CBIOS_FALSE))
                 {
-                    cbDPMonitor_SetUpMainLink(pcbe, pDPMonitorContext);
+                    if (cbDPMonitor_SetUpMainLink(pcbe, pDPMonitorContext))
+                    {
+                        // the infoframe will be cleared when link_training, so need set infoframe again after retraining
+                        cbDPMonitor_SetInfoFrame(pcbe, pDPMonitorContext);
+                    }
                 }
                 cbDPMonitor_NotifyDPEvent(pcbe, pDPMonitorContext, CBIOS_DP_EVENT_TEST_PATTERN, 0);
             }
@@ -2037,7 +2201,13 @@ static CBIOS_BOOL cbDPMonitor_ProcLinkStatusCheck(PCBIOS_EXTENSION_COMMON pcbe, 
                 {
                     CBIOS_BOOL status;
                     status = cbDPMonitor_SetUpMainLink(pcbe, pDPMonitorContext);
-                    if(!status)
+
+                    if (status)
+                    {
+                        // the infoframe will be cleared when link_training, so need set infoframe again after retraining
+                        cbDPMonitor_SetInfoFrame(pcbe, pDPMonitorContext);
+                    }
+                    else
                     {
                         cbDebugPrint((MAKE_LEVEL(DP, WARNING),"%s: setting up Main Link failed!\n", FUNCTION_NAME));
                     }

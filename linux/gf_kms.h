@@ -35,6 +35,7 @@
 #include <drm/drm_atomic.h>
 #include <drm/drm_atomic_helper.h>
 #include <drm/drm_plane_helper.h>
+#include <drm/drm_simple_kms_helper.h>
 #endif
 
 #if DRM_VERSION_CODE >= KERNEL_VERSION(4, 20, 0)
@@ -96,6 +97,26 @@
 
 #define COLOR_LEGACY_LUT_LENGTH    256
 
+typedef enum _OUTPUT_SIGNAL
+{
+    OUTPUT_SIGNAL_RGB = 0,
+    OUTPUT_SIGNAL_Y422,
+    OUTPUT_SIGNAL_Y444,
+    OUTPUT_SIGNAL_Y420,
+}OUTPUT_SIGNAL;
+
+typedef union
+{
+    struct
+    {
+        unsigned int set_crtc           :1;
+        unsigned int set_encoder        :1;
+        unsigned int output_signal      :2; // bit num must equel with OUTPUT_SIGNAL
+        unsigned int reserverd          :28;
+    };
+    unsigned int flags;
+}update_mode_flag_t;
+
 typedef  struct
 {
     struct drm_crtc    base_crtc;
@@ -123,6 +144,7 @@ typedef struct
     struct drm_encoder  base_encoder;
     int                 output_type;
     int                 enc_dpms;
+    OUTPUT_SIGNAL       output_signal;
 #if DRM_VERSION_CODE < KERNEL_VERSION(4, 8, 0)
     gf_crtc_t*  new_crtc;
 #endif
@@ -154,9 +176,10 @@ typedef struct
     };
     int                   hdcp_index;
     int                   hdcp_enable;
-    int                   detected; //fot hdcp cts
+    int                   detected; //for hdcp cts
     int                   hpd_out; //for hdcp cts
     int                   source_status;
+    OUTPUT_SIGNAL         prefer_signal;
 }gf_connector_t;
 
 typedef  struct
@@ -189,7 +212,7 @@ typedef struct
 {
     struct drm_framebuffer *fb;
     int  crtc;
-    int  stream_type;
+    int  plane_type;
     int  crtc_x;
     int  crtc_y;
     int  crtc_w;

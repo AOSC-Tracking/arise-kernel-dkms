@@ -34,7 +34,7 @@
 #include "gf_fence.h"
 #include "gf_gem.h"
 #include "gf_kms.h"
-
+#include "gf_drmfb.h"
 
 TRACE_EVENT(gfx_task_create,
 
@@ -338,14 +338,14 @@ TRACE_EVENT(gfx_crtc_flip,
 
     TP_STRUCT__entry(
         __field(int, crtc)
-        __field(int, stream_type)
+        __field(int, plane_type)
         __field(int, async_flip)
         __field(unsigned int, allocation)
         ),
 
     TP_fast_assign(
         __entry->crtc = crtc;
-        __entry->stream_type = flip_arg->stream_type;
+        __entry->plane_type = flip_arg->plane_type;
 #if  DRM_VERSION_CODE >= KERNEL_VERSION(4, 12, 0)
         __entry->async_flip = flip_arg->async_flip;
 #else
@@ -354,8 +354,160 @@ TRACE_EVENT(gfx_crtc_flip,
         __entry->allocation = obj ? obj->core_handle : 0;
         ),
 
-    TP_printk("crtc=%d, stream_type=%d, allocation=%x, async_flip=%d", __entry->crtc, __entry->stream_type,
+    TP_printk("crtc=%d, plane_type=%d, allocation=%x, async_flip=%d", __entry->crtc, __entry->plane_type,
               __entry->allocation, __entry->async_flip)
+);
+
+TRACE_EVENT(gfx_atomic_commit_tail,
+
+    TP_PROTO(const struct drm_atomic_state *state),
+
+    TP_ARGS(state),
+
+    TP_STRUCT__entry(
+        __field(const struct drm_atomic_state *, state)
+#if  DRM_VERSION_CODE > KERNEL_VERSION(4, 15, 0)
+        __field(bool, nonblock)
+        __field(bool, async_update)
+#endif
+        __field(bool, legacy_cursor_update)
+        __field(int, num_connector)
+    ),
+
+    TP_fast_assign(
+        __entry->state = state;
+
+#if  DRM_VERSION_CODE > KERNEL_VERSION(4, 15, 0)
+        __entry->nonblock = current_work() == &state->commit_work ? true : false;
+        __entry->async_update = state->async_update;
+#endif
+        __entry->legacy_cursor_update = state->legacy_cursor_update;
+        __entry->num_connector = state->num_connector;
+    ),
+
+#if  DRM_VERSION_CODE > KERNEL_VERSION(4, 15, 0)
+    TP_printk("state=%p nonblock=%d legacy_cursor_update=%d "
+              "async_update=%d num_connector=%d",
+              __entry->state, __entry->nonblock, __entry->legacy_cursor_update,
+              __entry->async_update,  __entry->num_connector)
+#else
+    TP_printk("state=%p legacy_cursor_update=%d num_connector=%d",
+              __entry->state,  __entry->legacy_cursor_update, __entry->num_connector)
+
+#endif
+);
+
+
+TRACE_EVENT(gfx_plane_atomic_check,
+
+    TP_PROTO(struct drm_plane_state *plane_state),
+
+    TP_ARGS(plane_state),
+
+    TP_STRUCT__entry(
+        __field(uint32_t, iga_index)
+        __field(uint32_t, stream_type)
+        __field(const struct drm_plane_state *, plane_state)
+        __field(const struct drm_atomic_state *, state)
+        __field(unsigned int, allocation)
+#if  DRM_VERSION_CODE > KERNEL_VERSION(4, 15, 0)
+        __field(uint32_t, fb_id)
+        __field(uint32_t, fb_format)
+        __field(const struct dma_fence *, fence)
+#endif
+        __field(int, crtc_x)
+        __field(int, crtc_y)
+        __field(unsigned int, crtc_w)
+        __field(unsigned int, crtc_h)
+        __field(uint32_t, src_x)
+        __field(uint32_t, src_y)
+        __field(uint32_t, src_w)
+        __field(uint32_t, src_h)
+    ),
+
+    TP_fast_assign(
+        __entry->iga_index = to_gf_plane(plane_state->plane)->crtc_index;
+        __entry->stream_type = to_gf_plane(plane_state->plane)->plane_type;
+        __entry->plane_state = plane_state;
+        __entry->state = plane_state->state;
+        __entry->allocation = plane_state->fb ? to_gfb(plane_state->fb)->obj->info.allocation : 0;
+#if  DRM_VERSION_CODE > KERNEL_VERSION(4, 15, 0)
+        __entry->fb_id = plane_state->fb ? plane_state->fb->base.id : 0;
+        __entry->fb_format = plane_state->fb ? plane_state->fb->format->format : 0;
+        __entry->fence = plane_state->fence;
+#endif
+        __entry->crtc_y = plane_state->crtc_y;
+        __entry->crtc_w = plane_state->crtc_w;
+        __entry->crtc_h = plane_state->crtc_h;
+        __entry->src_x = plane_state->src_x >> 16;
+        __entry->src_y = plane_state->src_y >> 16;
+        __entry->src_w = plane_state->src_w >> 16;
+        __entry->src_h = plane_state->src_h >> 16;
+   ),
+
+    TP_printk("iga_index=%u stream_type=%d plane_state=%p state=%p "
+#if  DRM_VERSION_CODE > KERNEL_VERSION(4, 15, 0)
+              "allocation=0x%x fb(id=%u, fmt=%c%c%c%c) fence=%p "
+#else
+              "allocation=0x%x "
+#endif
+              "crtc_x=%d crtc_y=%d crtc_w=%u crtc_h=%u "
+              "src_x=%u src_y=%u src_w=%u src_h=%u",
+              __entry->iga_index, __entry->stream_type,  __entry->plane_state,
+              __entry->state, __entry->allocation,
+#if  DRM_VERSION_CODE > KERNEL_VERSION(4, 15, 0)
+              __entry->fb_id,
+              (__entry->fb_format & 0xff) ? (__entry->fb_format & 0xff) : 'N',
+		      ((__entry->fb_format >> 8) & 0xff) ? ((__entry->fb_format >> 8) & 0xff) : 'O',
+		      ((__entry->fb_format >> 16) & 0xff) ? ((__entry->fb_format >> 16) & 0xff) : 'N',
+		      ((__entry->fb_format >> 24) & 0x7f) ? ((__entry->fb_format >> 24) & 0x7f) : 'E',
+              __entry->fence,
+#endif
+              __entry->crtc_x, __entry->crtc_y, __entry->crtc_w, __entry->crtc_h,
+              __entry->src_x, __entry->src_y, __entry->src_w, __entry->src_h)
+);
+
+
+TRACE_EVENT(gfx_update_plane,
+
+    TP_PROTO(struct drm_plane *plane, struct drm_framebuffer *fb, int crtc_x, int crtc_y, unsigned int crtc_w,
+             unsigned int crtc_h, uint32_t src_x, uint32_t src_y, uint32_t src_w, uint32_t src_h),
+
+    TP_ARGS(plane, fb, crtc_x, crtc_y, crtc_w, crtc_h, src_x, src_y, src_w, src_h),
+
+    TP_STRUCT__entry(
+        __field(uint32_t, iga_index)
+        __field(uint32_t, stream_type)
+        __field(unsigned int, allocation)
+        __field(int, crtc_x)
+        __field(int, crtc_y)
+        __field(unsigned int, crtc_w)
+        __field(unsigned int, crtc_h)
+        __field(uint32_t, src_x)
+        __field(uint32_t, src_y)
+        __field(uint32_t, src_w)
+        __field(uint32_t, src_h)
+    ),
+
+    TP_fast_assign(
+        __entry->iga_index = to_gf_plane(plane)->crtc_index;
+        __entry->stream_type = to_gf_plane(plane)->plane_type;
+        __entry->allocation = to_gfb(fb)->obj->info.allocation;
+        __entry->crtc_x = crtc_x;
+        __entry->crtc_y = crtc_y;
+        __entry->crtc_w = crtc_w;
+        __entry->crtc_h = crtc_h;
+        __entry->src_x = src_x >> 16;
+        __entry->src_y = src_y >> 16;
+        __entry->src_w = src_w >> 16;
+        __entry->src_h = src_h >> 16;
+   ),
+
+    TP_printk("iga_index=%u stream_type=%d allocation=0x%x crtc_x=%d crtc_y=%d "
+              "crtc_w=%u crtc_h=%u src_x=%u src_y=%u src_w=%u src_h=%u",
+              __entry->iga_index, __entry->stream_type, __entry->allocation,
+              __entry->crtc_x, __entry->crtc_y, __entry->crtc_w, __entry->crtc_h,
+              __entry->src_x, __entry->src_y, __entry->src_w, __entry->src_h)
 );
 
 TRACE_EVENT(gfx_begin_section,

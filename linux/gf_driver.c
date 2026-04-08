@@ -570,7 +570,7 @@ static ssize_t gf_gpuinfo_proc_read(struct file *filp, char *buf, size_t count, 
         hdmi_fps = 60;
         subsystemid = 0x10C0;
         technology = 28;
-        pixel_fillrate = 96 * eclk;
+        pixel_fillrate = 96 * eclk / 2;
         texture_fillrate = pixel_fillrate *2;
         product_name = "Arise-GT10C0t";
         if (adapter_info->chan_num == 3)
@@ -584,7 +584,7 @@ static ssize_t gf_gpuinfo_proc_read(struct file *filp, char *buf, size_t count, 
         hdmi_fps = 60;
         subsystemid = 0x2030;
         technology = 28;
-        pixel_fillrate = 32 * eclk;
+        pixel_fillrate = 32 * eclk / 2;
         texture_fillrate = pixel_fillrate *2;
         product_name = "Arise2030";
         output_cnt = 3;
@@ -596,7 +596,7 @@ static ssize_t gf_gpuinfo_proc_read(struct file *filp, char *buf, size_t count, 
         hdmi_fps = 60;
         subsystemid = 0x2020;
         technology = 28;
-        pixel_fillrate = 32 * eclk;
+        pixel_fillrate = 32 * eclk / 2;
         texture_fillrate = pixel_fillrate *2;
         product_name = "Arise2020";
         output_cnt = 3;
@@ -604,11 +604,29 @@ static ssize_t gf_gpuinfo_proc_read(struct file *filp, char *buf, size_t count, 
         type_dp = "/DP";
         break;
 
+    case 0x3d09:
+        hdmi_fps = 30;
+        subsystemid = 0x1020;
+        technology = 28;
+        pixel_fillrate = 16 * eclk;
+        texture_fillrate = pixel_fillrate *2;
+        product_name = "Arise1020C";
+        break;
+
+    case 0x3d0a:
+        hdmi_fps = 30;
+        subsystemid = 0x1010;
+        technology = 28;
+        pixel_fillrate = 8 * eclk;
+        texture_fillrate = pixel_fillrate *2;
+        product_name = "Arise1010C";
+        break;
+
     case 0x3d0e:
         hdmi_fps = 60;
         subsystemid = 0x10D0;
         technology = 28;
-        pixel_fillrate = 96 * eclk;
+        pixel_fillrate = 96 * eclk / 2;
         texture_fillrate = pixel_fillrate *2;
         product_name = "Arise10D0";
         break;
@@ -982,7 +1000,15 @@ int gf_card_init(gf_card_t *gf, void *pdev)
         gf_error("init adapter failed\n");
     }
 
-    gf_init_modeset(gf->drm_dev);
+    gf->cbios_flags = gf_modparams.gf_cbios_flags;
+    if (gf_modparams.gf_virtual_display)
+    {
+        gf_vkms_init_modeset(gf->drm_dev);
+    }
+    else
+    {
+        gf_init_modeset(gf->drm_dev);
+    }
 
     gf_disable_async_suspend(gf);
 
@@ -1042,7 +1068,14 @@ int gf_card_deinit(gf_card_t *gf)
 
     gf_core_interface->wait_chip_idle(gf->adapter);
 
-    gf_deinit_modeset(gf->drm_dev);
+    if (gf_modparams.gf_virtual_display)
+    {
+        gf_vkms_deinit_modeset(gf->drm_dev);
+    }
+    else
+    {
+        gf_deinit_modeset(gf->drm_dev);
+    }
 
 #ifndef GF_HW_NULL
     gf_interrupt_deinit(gf);

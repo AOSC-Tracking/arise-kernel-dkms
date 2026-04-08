@@ -42,6 +42,8 @@ CBIOS_U32 HDAC_REG_ELD_BUF[HDAC_MODU_NUM] = {0x834C,  0x33DF8};
 CBIOS_U32 HDAC_REG_CTRL_WRITE[HDAC_MODU_NUM] = {0x837C,  0x33E04};
 CBIOS_U32 HDAC_REG_READ_SEL[HDAC_MODU_NUM] = {0x8380,  0x33E08};
 CBIOS_U32 HDAC_REG_READ_OUT[HDAC_MODU_NUM] = {0x8384,  0x33E0C};
+CBIOS_U32 HDAC_REG_CHSTATUS1[HDAC_MODU_NUM] = {0x8390,  0x33E18};
+CBIOS_U32 HDAC_REG_CHSTATUS2[HDAC_MODU_NUM] = {0x8394,  0x33E1C};
 
 
 static AUDIO_CLOCK_TABLE  AudioClockPreGenerated[] =
@@ -155,7 +157,6 @@ static CBIOS_VOID cbDIU_HDAC_SetHDACSettings(PCBIOS_EXTENSION_COMMON pcbe, CBIOS
     CBIOS_U64 AudioPacketClock = 40722;    // 2^40
     CBIOS_U32 i = 0;
     CBIOS_BOOL bMatchAudioClock = CBIOS_FALSE;
-    CBIOS_U32  HDACReadSelRegIndex;
     REG_MM8298 HDACPacket1RegValue, HDACPacket1RegMask;
     REG_MM829C HDACPacket2RegValue, HDACPacket2RegMask;
     REG_MM82AC HDACChStatusCtrlRegValue, HDACChStatusCtrlRegMask;
@@ -168,7 +169,6 @@ static CBIOS_VOID cbDIU_HDAC_SetHDACSettings(PCBIOS_EXTENSION_COMMON pcbe, CBIOS
         cbDebugPrint((MAKE_LEVEL(DP, ERROR), "%s: invalid HDAC module index!\n", FUNCTION_NAME));
         return;
     }
-    HDACReadSelRegIndex = 0x8380;
 
     // 1. Audio Packet to Clock Ratio = (Fs * 2^40)/ 27Mhz
     for(i = 0; i < sizeofarray(AudioClockPreGenerated); i++)
@@ -233,7 +233,7 @@ static CBIOS_VOID cbDIU_HDAC_SetHDACSettings(PCBIOS_EXTENSION_COMMON pcbe, CBIOS
     HDACReadSelRegValue.Wal_Clk_Cnt_Clock_Sel2 = 1;
 
     HDACReadSelRegMask.Value = 0;
-    cbMMIOWriteReg32(pcbe, HDACReadSelRegIndex, HDACReadSelRegValue.Value, HDACReadSelRegMask.Value);
+    cbMMIOWriteReg32(pcbe, 0x8380, HDACReadSelRegValue.Value, HDACReadSelRegMask.Value);
 
     // 4. Wall Clock Ratio / Wall clock enable
     HDACWallClkLRegValue.Value = 0;
@@ -363,6 +363,130 @@ static CBIOS_VOID cbDIU_HDAC_SetHDAudioCapability(PCBIOS_EXTENSION_COMMON pcbe,
     cbMMIOWriteReg32(pcbe, HDAC_REG_PIN_WIDGET_CAP[HDACModuleIndex], HDACPinWidgetCapRegValue.Value, HDACPinWidgetCapRegMask.Value);
 }
 
+static CBIOS_VOID cbDIU_HDAC_SetChannelStatusBlock(PCBIOS_EXTENSION_COMMON pcbe,
+                                                   CBIOS_MODULE_INDEX HDACModuleIndex,
+                                                   CBIOS_U32 ReadOutValue)
+{
+    CBIOS_U32  sampling_frequency = 0;
+    CBIOS_U32  bits_per_sample = (ReadOutValue & 0x70) >> 4;
+    REG_MM8390 HDACChStatus1RegValue, HDACChStatus1RegMake;
+    REG_MM8394 HDACChStatus2RegValue, HDACChStatus2RegMake;
+    REG_MM82AC HDACChStatusCtrlRegValue, HDACChStatusCtrlRegMask;
+
+    if(ReadOutValue & 0x4000)
+    {
+        sampling_frequency = 44100;
+    }
+    else
+    {
+        sampling_frequency = 48000;
+    }
+    sampling_frequency *= (((ReadOutValue & 0x3800) >> 11) + 1);
+    sampling_frequency /= (((ReadOutValue & 0x700) >> 8) + 1);
+
+    HDACChStatus1RegValue.Value = 0;
+    HDACChStatus1RegMake.Value = 0;
+    HDACChStatus2RegValue.Value = 0;
+    HDACChStatus2RegMake.Value = 0;
+    HDACChStatus1RegValue.Use = 0; // Consumer use of channel status block
+    HDACChStatus1RegValue.Linear_PCM = (ReadOutValue & 0x80) ? 1 : 0;
+
+    if (!HDACChStatus1RegValue.Linear_PCM)
+    {
+        HDACChStatus1RegValue.Category_code = 0x82; // PCM encoder
+    }
+
+    HDACChStatus1RegValue.Copyright = 0; // Sofaware for which copyright is asserted
+    HDACChStatus1RegValue.Linear_PCM_mode = 0; // 2 audio channels without pre-emphasis
+    HDACChStatus1RegValue.Channel_status_mode = 0; // Channel status mode 0
+    HDACChStatus1RegValue.Source_number = 0; // Do not take into account
+    HDACChStatus1RegValue.Channel_number = (ReadOutValue & 0xF) + 1;
+
+    if (sampling_frequency == 22050)
+    {
+        HDACChStatus1RegValue.Sampling_frequency = 4;
+        HDACChStatus2RegValue.Original_sample_frequency = 0xB;
+    }
+    else if (sampling_frequency == 44100)
+    {
+        HDACChStatus1RegValue.Sampling_frequency = 0;
+        HDACChStatus2RegValue.Original_sample_frequency = 0xF;
+    }
+    else if (sampling_frequency == 88200)
+    {
+        HDACChStatus1RegValue.Sampling_frequency = 8;
+        HDACChStatus2RegValue.Original_sample_frequency = 0x7;
+    }
+    else if (sampling_frequency == 176400)
+    {
+        HDACChStatus1RegValue.Sampling_frequency = 0xC;
+        HDACChStatus2RegValue.Original_sample_frequency = 0x3;
+    }
+    else if (sampling_frequency == 24000)
+    {
+        HDACChStatus1RegValue.Sampling_frequency = 0x6;
+        HDACChStatus2RegValue.Original_sample_frequency = 0x9;
+    }
+    else if (sampling_frequency == 48000)
+    {
+        HDACChStatus1RegValue.Sampling_frequency = 2;
+        HDACChStatus2RegValue.Original_sample_frequency = 0xD;
+    }
+    else if (sampling_frequency == 96000)
+    {
+        HDACChStatus1RegValue.Sampling_frequency = 0xA;
+        HDACChStatus2RegValue.Original_sample_frequency = 0x5;
+    }
+    else if (sampling_frequency == 192000)
+    {
+        HDACChStatus1RegValue.Sampling_frequency = 0xE;
+        HDACChStatus2RegValue.Original_sample_frequency = 0x1;
+    }
+    else if (sampling_frequency == 32000)
+    {
+        HDACChStatus1RegValue.Sampling_frequency = 0x3;
+        HDACChStatus2RegValue.Original_sample_frequency = 0xC;
+    }
+    else if (sampling_frequency == 768000)
+    {
+        HDACChStatus1RegValue.Sampling_frequency = 0x9;
+    }
+    else
+    {
+        HDACChStatus1RegValue.Sampling_frequency = 0x1;
+        HDACChStatus2RegValue.Original_sample_frequency = 0;
+    }
+
+    HDACChStatus1RegValue.Clock_accurary = 0;
+
+    if (bits_per_sample == 1)
+    {
+        HDACChStatus2RegValue.Max_word_length = 0; // 20 bits
+        HDACChStatus2RegValue.Sample_word_length = 1; // 16 bits
+    }
+    else if (bits_per_sample == 2)
+    {
+        HDACChStatus2RegValue.Max_word_length = 0; // 20 bits
+        HDACChStatus2RegValue.Sample_word_length = 5; // 16 bits
+    }
+    else if (bits_per_sample == 3)
+    {
+        HDACChStatus2RegValue.Max_word_length = 1; // 24 bits
+        HDACChStatus2RegValue.Sample_word_length = 5; // 16 bits
+    }
+
+    cbMMIOWriteReg32(pcbe, HDAC_REG_CHSTATUS1[HDACModuleIndex], HDACChStatus1RegValue.Value, HDACChStatus1RegMake.Value);
+    cbMMIOWriteReg32(pcbe, HDAC_REG_CHSTATUS2[HDACModuleIndex], HDACChStatus2RegValue.Value, HDACChStatus2RegMake.Value);
+
+    HDACChStatusCtrlRegValue.Value = 0;
+    HDACChStatusCtrlRegValue.Channel_status_control = 2;
+    HDACChStatusCtrlRegMask.Value = 0xFFFFFFFF;
+    HDACChStatusCtrlRegMask.Channel_status_control = 0; // Channel status provided by SW
+    cbMMIOWriteReg32(pcbe, HDAC_REG_CHSTATUS_CTRL[HDACModuleIndex], HDACChStatusCtrlRegValue.Value, HDACChStatusCtrlRegMask.Value);
+
+    cbDebugPrint((MAKE_LEVEL(DP, DEBUG), "%s: ReadOutValue=%x, Linear_PCM=%d, Channel_number=%d, Sampling_frequency=%d, Max_word_length=%d, Sample_word_length=%d\n", __func__, ReadOutValue, HDACChStatus1RegValue.Linear_PCM, HDACChStatus1RegValue.Channel_number, HDACChStatus1RegValue.Sampling_frequency, HDACChStatus2RegValue.Max_word_length, HDACChStatus2RegValue.Sample_word_length));
+}
+
 CBIOS_VOID cbDIU_HDAC_SetHDACodecPara(PCBIOS_VOID pvcbe, PCBIOS_HDAC_PARA pCbiosHDACPara)
 {
     PCBIOS_EXTENSION_COMMON pcbe = (PCBIOS_EXTENSION_COMMON)pvcbe;
@@ -425,6 +549,10 @@ CBIOS_VOID cbDIU_HDAC_SetHDACodecPara(PCBIOS_VOID pvcbe, PCBIOS_HDAC_PARA pCbios
     cbMMIOWriteReg32(pcbe, HDAC_REG_READ_SEL[HDACModuleIndex], HDACReadSelRegValue.Value, HDACReadSelRegMask.Value);
 
     //step 2. decode ReadOutValue by definition
+    // [15] Converter Format TYPE
+    // BASE. Converter Format Sample Base Rate. (PCM Format structure bit 15)
+    //              0: PCM
+    //              1: Non-PCM
     // [14] Converter_Format_Base
     // BASE. Converter Format Sample Base Rate. (PCM Format structure bit 14)
     //              0: 48kHz
@@ -446,6 +574,17 @@ CBIOS_VOID cbDIU_HDAC_SetHDACodecPara(PCBIOS_VOID pvcbe, PCBIOS_HDAC_PARA pCbios
     //              101: Divide by 6 (8kHz)
     //              110: Divide by 7
     //              111: Divide by 8 (6kHz)
+    // [6:4] Converter Format Bits per sample.
+    //              000: 8 bits
+    //              001: 16 bits
+    //              010: 24 bits
+    //              011: 32 bits
+    //              100-111: Reserved
+    // [3:0] Converter Format CHAN
+    //              0000: 1 Channel in each frame of the stream
+    //              0001: 2 Channels in each frame of the stream
+    //              0010: 3 Channels in each frame of the stream...
+    //              1111: 16 Channels in each frame of the stream
     if(ReadOutValue & 0x4000)
     {
         StreamFormat = 44100;
@@ -461,6 +600,7 @@ CBIOS_VOID cbDIU_HDAC_SetHDACodecPara(PCBIOS_VOID pvcbe, PCBIOS_HDAC_PARA pCbios
 
     // step 3. Audio packet clock, Wall clock ratio
     cbDIU_HDAC_SetHDACSettings(pcbe, HDACModuleIndex, StreamFormat);
+    cbDIU_HDAC_SetChannelStatusBlock(pcbe, HDACModuleIndex, ReadOutValue);
 
     // step 4. fill CTS/N for HDMI/MHL, Maud/Naud for DP
     if(bHDMIDevice)
@@ -561,6 +701,16 @@ CBIOS_VOID cbDIU_HDAC_SetStatus(PCBIOS_VOID pvcbe)
 
     cbTraceEnter(DP);
 
+    // Set NID=2, Output Converter Widget, 7.3.4.6 Audio Widget Capabilities - Parameter ID: 09h
+    // Bit15-13, Bit0 = 0001, Chan Count Ext and Chan Count LSB, 2 Channels.
+    // Bit9 = 1, Digital, indicates that a widget supports a digital stream.
+    cbMMIOWriteReg32(pcbe, HDAC_REG_CONVERT_CAP[CBIOS_MODULE_INDEX1], 0x00000201, 0);
+    // Set NID=3, Pin Widget, 7.3.4.6 Audio Widget Capabilities - Parameter ID: 09h
+    // Bit15-13, Bit0 = 0001, Chan Count Ext and Chan Count LSB, 2 Channels.
+    // Bit7 = 1, Unsol Capable, the audio widget supports unsolicited responses.
+    // Bit8 = 1, ConnList, indicates whether a connection list is present on the widget.
+    // Bit9 = 1, Digital, indicates that a widget supports a digital stream.
+    // Bit23-20 = 4, Pin Complex.
     cbMMIOWriteReg32(pcbe, HDAC_REG_PIN_WIDGET_CAP[CBIOS_MODULE_INDEX1], 0x00400381, 0);
     cbMMIOWriteReg32(pcbe, 0x82F4, 0x00000094, 0);
 
@@ -573,7 +723,16 @@ CBIOS_VOID cbDIU_HDAC_SetStatus(PCBIOS_VOID pvcbe)
     cbMMIOWriteReg32(pcbe, HDAC_REG_CTRL_WRITE[CBIOS_MODULE_INDEX1], 0x00000080, 0xFFFFFF7F);
     cbMMIOWriteReg32(pcbe, HDAC_REG_CTRL_WRITE[CBIOS_MODULE_INDEX1], 0x00000000, 0xFFFFFF7F);
 
-
+    // Set NID=2, Output Converter Widget, 7.3.4.6 Audio Widget Capabilities - Parameter ID: 09h
+    // Bit15-13, Bit0 = 0001, Chan Count Ext and Chan Count LSB, 2 Channels.
+    // Bit9 = 1, Digital, indicates that a widget supports a digital stream.
+    cbMMIOWriteReg32(pcbe, HDAC_REG_CONVERT_CAP[CBIOS_MODULE_INDEX2], 0x00000201, 0);
+    // Set NID=3, Pin Widget, 7.3.4.6 Audio Widget Capabilities - Parameter ID: 09h
+    // Bit15-13, Bit0 = 0001, Chan Count Ext and Chan Count LSB, 2 Channels.
+    // Bit7 = 1, Unsol Capable, the audio widget supports unsolicited responses.
+    // Bit8 = 1, ConnList, indicates whether a connection list is present on the widget.
+    // Bit9 = 1, Digital, indicates that a widget supports a digital stream.
+    // Bit23-20 = 4, Pin Complex.
     cbMMIOWriteReg32(pcbe, HDAC_REG_PIN_WIDGET_CAP[CBIOS_MODULE_INDEX2], 0x00400381, 0);
     cbMMIOWriteReg32(pcbe, 0x33DDC, 0x00000094, 0);
 
@@ -626,19 +785,6 @@ CBIOS_U32 cbDIU_HDAC_GetChannelNums(PCBIOS_VOID pvcbe, CBIOS_MODULE_INDEX HDACMo
     HDACModeRespRegMask.Value = 0xFFFFFFFF;
     HDACModeRespRegMask.HD_AUDIO_MODE_SELECT = 0;
     cbMMIOWriteReg32(pcbe, HDAC_REG_MODE_RESP[HDACModuleIndex], HDACModeRespRegValue.Value, HDACModeRespRegMask.Value);
-
-    HDACChStatusCtrlRegValue.Value = 0;
-    HDACChStatusCtrlRegMask.Value = 0xFFFFFFFF;
-    HDACChStatusCtrlRegMask.Codec_Type = 0;
-    if(HDACModuleIndex == CBIOS_MODULE_INDEX1)
-    {
-        HDACChStatusCtrlRegValue.Codec_Type = 0;
-    }
-    else
-    {
-        HDACChStatusCtrlRegValue.Codec_Type = 3;
-    }
-    cbMMIOWriteReg32(pcbe, HDAC_REG_CHSTATUS_CTRL[HDACModuleIndex], HDACChStatusCtrlRegValue.Value, HDACChStatusCtrlRegMask.Value);
 
     // step 1. read out stream format
     HDACReadSelRegValue.Value = 0;
@@ -895,7 +1041,7 @@ static CBIOS_VOID cbDIU_HDAC_WriteFIFO(PCBIOS_VOID pvcbe, CBIOS_ACTIVE_TYPE Devi
 
     for(index = 0; index < ((pEld->Size + 31) / 32); index++)
     {
-        for(eldIndex = (index + 1) * 32; eldIndex > 0; eldIndex--)
+        for(eldIndex = (index + 1) * 32; eldIndex > index * 32; eldIndex--)
         {
             if(eldIndex > pEld->Size)
                 Data = 0;

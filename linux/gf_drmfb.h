@@ -42,6 +42,9 @@ struct drm_framebuffer *
 gf_fb_create(struct drm_device *dev,
                               struct drm_file *file_priv,
                               #if DRM_VERSION_CODE >= KERNEL_VERSION(4, 5, 0)  || defined (PHYTIUM_2000)
+                              #if DRM_VERSION_CODE >= KERNEL_VERSION(6, 17, 0)
+                              const struct drm_format_info *info,
+                              #endif
                               const struct drm_mode_fb_cmd2 *mode_cmd
                               #else
                               struct drm_mode_fb_cmd2 *mode_cmd
@@ -52,6 +55,9 @@ void gf_cleanup_fb(struct drm_plane *plane,  struct drm_plane_state *old_state);
 
 struct drm_gf_framebuffer*
 __gf_framebuffer_create(struct drm_device *dev,
+                        #if DRM_VERSION_CODE >= KERNEL_VERSION(6, 17, 0)
+                        const struct drm_format_info *info,
+                        #endif
                         struct drm_mode_fb_cmd2 *mode_cmd,
                         struct drm_gf_gem_object *obj);
 #endif
