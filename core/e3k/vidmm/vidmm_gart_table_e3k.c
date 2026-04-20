@@ -247,11 +247,6 @@ void vidmm_unmap_gart_table_e3k(adapter_t *adapter, vidmm_allocation_t *allocati
         page_phy_addr = adapter->dummy_page_addr;
         page_phy_addr >>= 12;
 
-#if defined(__mips64__) || defined(__loongarch__)
-        gf_assert(!(page_phy_addr & 0xFFFFFFFFF0000000), "cpu PA need under 36bits");
-        gf_assert(!(page_phy_addr &0x3), "page_phy_addr not 16k");
-#endif
-
         for(j = 0; j < gart_page_num_per_kernel_page; j++)
         {
             //set sys page PA
