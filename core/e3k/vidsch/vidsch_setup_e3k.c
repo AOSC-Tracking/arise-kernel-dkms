@@ -478,22 +478,6 @@ static void vidsch_get_set_reg_e3k(adapter_t *adapter, gf_query_info_t *info)
         }
             break;
 
-        case GF_QUERY_REGISTER_U32:
-            buf=gf_calloc(info->buf_len*sizeof(unsigned int));
-            if(buf)
-            {
-                for(i=0;i<info->buf_len;i++)
-                {
-                    *(buf+i)=gf_read32(adapter->mmio+info->argu+i*sizeof(unsigned int));
-                }
-            }
-            gf_copy_to_user(info->buf, buf, info->buf_len*sizeof(unsigned int));
-            gf_free(buf);
-            break;
-
-        case GF_SET_REGISTER_U32:
-            gf_write32(adapter->mmio+info->argu, info->value);
-            break;
         default:
             break;
     }

@@ -496,6 +496,7 @@ void vidsch_selftest_e3k(adapter_t *adapter)
     vidmm_map_flags_t map_flags = {0};
     unsigned char value, pattern_0 = 0xAA, pattern_1 = 0x55, *src_virt_addr = NULL, *dst_virt_addr = NULL;
     int n, test_size = 1 << 15, result = 0;
+    unsigned long long start_time, end_time, pcie_speed = 0;
 
     src_segment = vidmm_allocate_segment_memory(adapter, SEGMENT_ID_LOCAL_E3K, test_size, 0);
     if (!src_segment)
@@ -528,11 +529,30 @@ void vidsch_selftest_e3k(adapter_t *adapter)
 
     gf_memset(src_virt_addr, pattern_1, test_size);
 
+    gf_get_nsecs(&start_time);
     result = vidmm_segment_memory_transfer_e3k(adapter, &dst_segment, src_segment, FALSE);
+    gf_get_nsecs(&end_time);
     if (result)
     {
         gf_error("failed to transfer memory selftest\n");
         goto done;
+    }
+
+    if ((end_time - start_time) != 0)
+        pcie_speed = (1000 * test_size) / (end_time - start_time);
+
+    if (pcie_speed < 100)
+    {
+        if (!adapter->in_suspend_resume)
+            adapter->sys_caps.platform_low_speed = TRUE;
+        else
+            adapter->sys_caps.platform_low_speed = FALSE;
+
+        gf_error("detect CPU platform pcie speed too slow, speed level: %u\n", pcie_speed);
+    }
+    else
+    {
+        gf_info("CPU platform pcie speed level: %u\n", pcie_speed);
     }
 
     vidmm_map_segment_memory(adapter, NULL, dst_segment, &map_flags);

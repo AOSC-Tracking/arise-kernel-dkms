@@ -37,10 +37,15 @@ void glb_init_chip_id(adapter_t *adapter, krnl_adapter_init_info_t *info)
         adapter->generic_id= PCI_ID_ARISE;
 
         adapter->hw_caps.support_snooping = TRUE;
-        //from loongson, loonson 3A3000 not support snoop
-#if defined(__mips64__) || defined(__loongarch__)
+
+#if defined(__mips64__)
         adapter->hw_caps.support_snooping = FALSE;
 #endif
+
+#if defined(__loongarch__)
+        adapter->hw_caps.snoop_only       = TRUE;
+#endif
+
         adapter->hw_caps.page_4k_enable   = TRUE;
 
         adapter->hw_caps.hw_patch_enable  = FALSE;

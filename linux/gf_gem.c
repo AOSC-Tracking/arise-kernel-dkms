@@ -610,7 +610,6 @@ static int gf_gem_dmabuf_open(struct drm_gem_object *gem_obj, struct drm_file *f
     gf_file_t *priv = file->driver_priv;
     gf_card_t *gf = priv->card;
     gf_create_allocation_t create = {0, };
-    gf_query_info_t query = {0, };
     int ret = 0;
 
     if (obj->core_handle)
@@ -643,10 +642,7 @@ static int gf_gem_dmabuf_open(struct drm_gem_object *gem_obj, struct drm_file *f
         goto fail_unpin;
     }
 
-    query.type = GF_QUERY_ALLOCATION_INFO_KMD;
-    query.argu = create.allocation;
-    query.buf = &obj->info;
-    gf_core_interface->query_info(priv->card->adapter, &query);
+    gf_core_interface->query_allocation_info_kmd(priv->card->adapter, create.allocation, &obj->info);
 
     if (gf->a_info.debugfs_mask & GF_DEBUGFS_GEM_ENABLE)
     {
@@ -960,7 +956,6 @@ release_pages:
 struct drm_gf_gem_object* gf_drm_gem_create_object(gf_card_t *gf, gf_create_allocation_t *create, gf_device_debug_info_t **ddbg)
 {
     struct drm_gf_gem_object *obj = NULL;
-    gf_query_info_t query = {0, };
     int result = 0;
 
     obj = gf_calloc(sizeof(*obj));
@@ -989,10 +984,8 @@ struct drm_gf_gem_object* gf_drm_gem_create_object(gf_card_t *gf, gf_create_allo
         return NULL;
     }
 
-    query.type = GF_QUERY_ALLOCATION_INFO_KMD;
-    query.argu = create->allocation;
-    query.buf = &obj->info;
-    gf_core_interface->query_info(gf->adapter, &query);
+    gf_core_interface->query_allocation_info_kmd(gf->adapter, create->allocation, &obj->info);
+
     obj->core_handle = create->allocation;
 
     drm_gem_private_object_init(pci_get_drvdata(gf->pdev), &obj->base, create->size);
@@ -1050,7 +1043,6 @@ int gf_drm_gem_create_resource_ioctl(struct drm_file *file, gf_create_resource_t
     gf_create_alloc_info_t __user *uinfo = ptr64_to_ptr(create->pAllocationInfo);
     struct drm_gf_gem_object *stack_objs[8];
     struct drm_gf_gem_object **objs = stack_objs;
-    gf_query_info_t query = {0, };
 
     gf_assert(create->device == priv->gpu_device, GF_FUNC_NAME(__func__));
     gf_assert(uinfo != NULL, GF_FUNC_NAME(__func__));
@@ -1090,10 +1082,7 @@ int gf_drm_gem_create_resource_ioctl(struct drm_file *file, gf_create_resource_t
         objs[i]->core_handle = kinfo[i].hAllocation;
         gf_assert(kinfo[i].hAllocation, GF_FUNC_NAME(__func__));
 
-        query.type = GF_QUERY_ALLOCATION_INFO_KMD;
-        query.argu = kinfo[i].hAllocation;
-        query.buf = &objs[i]->info;
-        gf_core_interface->query_info(gf->adapter, &query);
+        gf_core_interface->query_allocation_info_kmd(gf->adapter, kinfo[i].hAllocation, &objs[i]->info);
 
         drm_gem_private_object_init(pci_get_drvdata(gf->pdev), &objs[i]->base, kinfo[i].Size);
         ret = drm_gem_handle_create(file, &objs[i]->base, &kinfo[i].hAllocation);

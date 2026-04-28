@@ -177,6 +177,7 @@ typedef struct
     int (*get_power_state)(void* data, unsigned int *state);
     int (*set_power_state)(void* data, unsigned int state, unsigned int holding_ms, unsigned int force, unsigned int lcok, unsigned int unlock);
     void (*selftest)(void* data);
+    int (*query_allocation_info_kmd)(void* data, unsigned int handle, gf_open_allocation_t *info);
 } core_interface_t;
 
 extern core_interface_t *gf_core_interface;

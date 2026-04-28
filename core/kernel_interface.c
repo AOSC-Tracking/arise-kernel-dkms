@@ -633,7 +633,6 @@ static int krnl_query_info(void* data, gf_query_info_t *info)
     case GF_QUERY_SEGMENT_FREE_SIZE:
     case GF_QUERY_SEGMENT_MEM_INFO:
     case GF_QUERY_ALLOCATION_INFO:
-    case GF_QUERY_ALLOCATION_INFO_KMD:
     case GF_QUERY_LOCAL_ALLOCATION_MAX_SIZE:
     case GF_SET_PERF_SWAP_HINT:
     case GF_GET_PERF_SWAP_HINT:
@@ -659,10 +658,6 @@ static int krnl_query_info(void* data, gf_query_info_t *info)
     case GF_QUERY_PENDING_FRAME_NUM:
     case GF_QUERY_GET_VIDEO_BRIDGE_BUFFER:
     case GF_QUERY_GPU_TIME_STAMP:
-    case GF_SET_MIU_REGISTER_U32:
-    case GF_QUERY_MIU_REGISTER_U32:
-    case GF_QUERY_REGISTER_U32:
-    case GF_SET_REGISTER_U32:
     case GF_QUERY_VCP_INDEX:
     case GF_QUERY_PROCESS_INFO:
         status = vidsch_query_info(adapter, info);
@@ -872,6 +867,19 @@ static int krnl_query_info(void* data, gf_query_info_t *info)
     }
 
     return status;
+}
+
+static int krnl_query_allocation_info_kmd(void* data, unsigned int handle, gf_open_allocation_t *info)
+{
+    adapter_t *adapter = data;
+    int ret;
+
+    if (!info)
+        return E_INVALIDARG;
+
+    ret = vidmm_query_allocation_info(adapter, handle, info);
+
+    return ret;
 }
 
 static int krnl_set_callback_func(void *data, int type, void *func, void *argu)
@@ -1456,6 +1464,7 @@ static core_interface_t gfe3k_gpu_core = {
     INTERFACE(get_power_state),
     INTERFACE(set_power_state),
     INTERFACE(selftest),
+    INTERFACE(query_allocation_info_kmd),
 #undef INTERFACE
 };
 

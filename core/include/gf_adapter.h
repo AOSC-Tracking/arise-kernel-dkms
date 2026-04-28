@@ -134,7 +134,8 @@ typedef struct sys_caps
     unsigned int bus_ahb_inuse      :1;
     unsigned int secure_on          :1;
     unsigned int iommu_enabled      :1;
-    unsigned int reserved           :28;
+    unsigned int platform_low_speed :1;
+    unsigned int reserved           :27;
 }sys_caps_t;
 
 /* our power feature put here*/

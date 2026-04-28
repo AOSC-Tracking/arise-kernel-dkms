@@ -170,7 +170,7 @@ CBIOS_HDMI_FORMAT_MTX CEAVideoFormatTable[] =
 
 };
 
-extern CBIOS_TIMING_ATTRIB DMTFormatTimingTbl[DMT_TIMING_COUNT];
+extern CBIOS_TIMING_ATTRIB DMTFormatTimingTbl[];
 
 static DETAILEDTIMING_TABLE EDIDPixelClock[]= {
     {EDIDTIMING,0x00,0xFF},

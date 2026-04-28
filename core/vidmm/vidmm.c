@@ -899,17 +899,13 @@ int vidmm_query_info(adapter_t *adapter, gf_query_info_t *query)
         break;
 
     case GF_QUERY_ALLOCATION_INFO:
-    case GF_QUERY_ALLOCATION_INFO_KMD:
     {
         vidmm_allocation_t *allocation = get_from_handle_and_validate(&adapter->hdl_mgr, query->argu, HDL_TYPE_ALLOCATION);
         gf_open_allocation_t  _data = {0};
-        gf_open_allocation_t  *info = (query->type == GF_QUERY_ALLOCATION_INFO) ? &_data : query->buf;
 
-        vidmm_fill_allocation_info(adapter, allocation, info);
-        if (query->type == GF_QUERY_ALLOCATION_INFO)
-        {
-            gf_copy_to_user(query->buf, info, sizeof(gf_open_allocation_t));
-        }
+        vidmm_fill_allocation_info(adapter, allocation, &_data);
+        gf_copy_to_user(query->buf, &_data, sizeof(gf_open_allocation_t));
+
         break;
     }
 
@@ -944,6 +940,18 @@ int vidmm_query_info(adapter_t *adapter, gf_query_info_t *query)
     }
 
     return ret;
+}
+
+int vidmm_query_allocation_info(adapter_t *adapter, unsigned int handle, gf_open_allocation_t *info)
+{
+    vidmm_allocation_t *allocation = get_from_handle_and_validate(&adapter->hdl_mgr, handle, HDL_TYPE_ALLOCATION);
+
+    if (!allocation)
+        return E_INVALIDARG;
+
+    vidmm_fill_allocation_info(adapter, allocation, info);
+
+    return S_OK;
 }
 
 void vidmm_dump_flagbuffer_to_file(char *file_name, vidmm_allocation_t *allocation)

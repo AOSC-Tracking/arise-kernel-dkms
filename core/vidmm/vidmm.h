@@ -363,6 +363,7 @@ extern void vidmm_validate_allocation_memory(adapter_t*, vidmm_allocation_t *all
 extern int vidmm_allocate_super_page(adapter_t *adapter, unsigned int preferred_segment_id, unsigned int size);
 extern int vidmm_get_allocation_info(adapter_t *adapter, vidmm_get_allocation_info_t *info);
 extern int vidmm_query_info(adapter_t *adapter, gf_query_info_t *info);
+extern int vidmm_query_allocation_info(adapter_t *adapter, unsigned int handle, gf_open_allocation_t *info);
 extern vidmm_segment_t* vidmm_get_segment_by_id(adapter_t *adapter, unsigned int segment_id);
 extern heap_t * vidmm_get_burst_length_heap(adapter_t *adapter);
 extern int vidmm_get_segment_count(adapter_t *adapter);

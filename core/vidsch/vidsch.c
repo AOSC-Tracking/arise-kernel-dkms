@@ -1276,15 +1276,7 @@ int vidsch_query_info(adapter_t *adapter, gf_query_info_t *info)
             info->value64 =  adapter->sch_mgr[info->argu + RB_INDEX_VIDEO_START]->local_reserved_memory->gpu_virt_addr;
             break;
         case GF_QUERY_GPU_TIME_STAMP:
-        case GF_QUERY_REGISTER_U32:
-        case GF_SET_REGISTER_U32:
             vidsch_get_set_reg(adapter, info);
-            break;
-        case GF_SET_MIU_REGISTER_U32:
-            vidsch_set_miu_reg(adapter,info);
-            break;
-        case GF_QUERY_MIU_REGISTER_U32:
-            vidsch_read_miu_reg(adapter,info);
             break;
         case GF_QUERY_VCP_INDEX:
             if(adapter->chip_id >= CHIP_ARISE1020)
